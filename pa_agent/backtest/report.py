@@ -1,6 +1,7 @@
 """HTML / CSV report rendering for a backtest run (no third-party deps)."""
 from __future__ import annotations
 
+import base64
 import csv
 import html
 import io
@@ -19,6 +20,7 @@ h2 { font-size:15px; margin:26px 0 10px; padding-bottom:6px; border-bottom:1px s
 .card .k { color:#7d8798; font-size:11px; letter-spacing:.04em; }
 .card .v { font-size:18px; font-weight:600; margin-top:2px; }
 .pos { color:#ff5b6a; } .neg { color:#22c55e; }
+img.chart { max-width:100%; border:1px solid #232a36; border-radius:6px; background:#0d1117; }
 table { width:100%; border-collapse:collapse; font-size:12px; }
 th,td { padding:6px 8px; border-bottom:1px solid #1e2531; text-align:right; white-space:nowrap; }
 th:first-child,td:first-child,th:nth-child(2),td:nth-child(2) { text-align:left; }
@@ -168,12 +170,37 @@ def _config_table(result: BacktestResult) -> str:
     return f'<div class="kv">{rows}</div>'
 
 
-def render_html(result: BacktestResult, *, title: str | None = None) -> str:
-    """生成自包含 HTML 报告（可直接双击打开、打印成 PDF）。"""
+def _chart_section(chart_png: bytes | None, trade_count: int) -> str:
+    """把图表截图内嵌进报告（没有截图时整节省略）。"""
+    if not chart_png:
+        return ""
+    b64 = base64.b64encode(chart_png).decode("ascii")
+    legend = (
+        '<div class="note">红色 ▲ = 买入成交，绿色 ▼ = 做空成交，灰色 ■ = 平仓；'
+        "浅蓝底 = 持仓区间，红点线 = 止损，绿点线 = 止盈，灰虚线 = 入场→出场。</div>"
+    )
+    return (
+        f"<h2>K 线与成交点位（{trade_count} 笔）</h2>\n"
+        f'<img class="chart" alt="K线与成交点位" src="data:image/png;base64,{b64}">\n'
+        f"{legend}\n"
+    )
+
+
+def render_html(
+    result: BacktestResult,
+    *,
+    title: str | None = None,
+    chart_png: bytes | None = None,
+) -> str:
+    """生成自包含 HTML 报告（可直接双击打开、打印成 PDF）。
+
+    *chart_png* 若给出，会以 data URI 内嵌「K 线 + 成交点位」截图。
+    """
     cfg = result.config
     head = title or f"PA Agent 回测报告 · {cfg.symbol} {cfg.timeframe}"
     s = result.summary()
     cancelled = ' · <span class="neg">已取消（结果不完整）</span>' if result.cancelled else ""
+    chart_block = _chart_section(chart_png, len(result.trades))
     return f"""<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <title>{html.escape(head)}</title><style>{_CSS}</style></head>
@@ -182,6 +209,7 @@ def render_html(result: BacktestResult, *, title: str | None = None) -> str:
 <div class="sub">按 AI 建议逐根 K 线回放 · 生成于 {html.escape(result.finished_iso or '-')}{cancelled}</div>
 <div class="cards">{_summary_cards(result)}</div>
 
+{chart_block}
 <h2>资金曲线</h2>
 {_svg_curve(result.equity_curve)}
 

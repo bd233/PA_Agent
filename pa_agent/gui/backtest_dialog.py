@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -22,10 +23,12 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSpinBox,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
     QVBoxLayout,
+    QWidget,
 )
 
 from pa_agent.backtest.models import BacktestConfig, BacktestResult
@@ -55,21 +58,31 @@ class BacktestDialog(QDialog):
         self._result: BacktestResult | None = None
 
         self.setWindowTitle("回测（按 AI 建议逐根回放）")
-        self.resize(960, 720)
+        self.resize(1240, 880)
         self.setModal(True)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(10)
+        root = QHBoxLayout(self)
+        root.setContentsMargins(14, 12, 14, 12)
+        root.setSpacing(14)
 
-        # ── 参数区 ────────────────────────────────────────────────────────────
+        # ── 左栏：参数 / 提示 / 进度 / 按钮 / 日志 ─────────────────────────────
+        left_col = QVBoxLayout()
+        left_col.setSpacing(8)
+
         form_box = QGroupBox("回测参数")
-        form = QFormLayout(form_box)
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        grid = QGridLayout(form_box)
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(6)
+
+        def label(text: str) -> QLabel:
+            lab = QLabel(text)
+            lab.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            return lab
 
         self._symbol_edit = QLineEdit(symbol)
         self._symbol_edit.setPlaceholderText("留空则用当前标的")
-        form.addRow("标的", self._symbol_edit)
+        grid.addWidget(label("标的"), 0, 0)
+        grid.addWidget(self._symbol_edit, 0, 1, 1, 3)
 
         self._tf_combo = QComboBox()
         for tf in self._timeframe_choices(timeframe):
@@ -77,34 +90,48 @@ class BacktestDialog(QDialog):
         if timeframe and self._tf_combo.findText(timeframe) < 0:
             self._tf_combo.addItem(timeframe)
             self._tf_combo.setCurrentText(timeframe)
-        form.addRow("周期", self._tf_combo)
+        grid.addWidget(label("周期"), 1, 0)
+        grid.addWidget(self._tf_combo, 1, 1)
 
         self._bars_spin = QSpinBox()
         self._bars_spin.setRange(2, 2000)
         self._bars_spin.setValue(30)
         self._bars_spin.setSingleStep(5)
+        self._bars_spin.setToolTip("回测最近 N 根已收盘 K 线")
         self._bars_spin.valueChanged.connect(self._update_estimate)
-        form.addRow("回测K线数 N", self._bars_spin)
+        grid.addWidget(label("K线数 N"), 1, 2)
+        grid.addWidget(self._bars_spin, 1, 3)
 
         self._capital_spin = QDoubleSpinBox()
         self._capital_spin.setRange(1000.0, 1e12)
-        self._capital_spin.setDecimals(2)
+        self._capital_spin.setDecimals(0)
         self._capital_spin.setSingleStep(100_000.0)
         self._capital_spin.setValue(1_000_000.0)
         self._capital_spin.setGroupSeparatorShown(True)
-        form.addRow("初始资金", self._capital_spin)
+        grid.addWidget(label("初始资金"), 2, 0)
+        grid.addWidget(self._capital_spin, 2, 1)
 
         self._position_spin = QSpinBox()
         self._position_spin.setRange(1, 100)
         self._position_spin.setValue(100)
         self._position_spin.setSuffix(" %")
         self._position_spin.setToolTip("每次下单使用当前权益的比例")
-        form.addRow("单笔仓位", self._position_spin)
+        grid.addWidget(label("单笔仓位"), 2, 2)
+        grid.addWidget(self._position_spin, 2, 3)
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(3, 1)
+        left_col.addWidget(form_box)
 
-        adv = QGroupBox("费用与撮合（默认 A 股口径，黄金可把印花税设为 0）")
-        adv.setCheckable(True)
-        adv.setChecked(False)
-        adv_form = QFormLayout(adv)
+        self._adv_toggle = QPushButton("高级参数：费用与撮合 ▸")
+        self._adv_toggle.setCheckable(True)
+        self._adv_toggle.setChecked(False)
+        self._adv_toggle.toggled.connect(self._on_toggle_adv)
+        left_col.addWidget(self._adv_toggle)
+
+        adv_box = QWidget()
+        adv_form = QFormLayout(adv_box)
+        adv_form.setContentsMargins(10, 2, 0, 2)
+        adv_form.setVerticalSpacing(6)
         self._commission_spin = QDoubleSpinBox()
         self._commission_spin.setRange(0.0, 1.0)
         self._commission_spin.setDecimals(5)
@@ -130,47 +157,59 @@ class BacktestDialog(QDialog):
         self._lot_spin.setRange(1, 1000)
         self._lot_spin.setValue(100)
         adv_form.addRow("每手股数", self._lot_spin)
-        form.addRow(adv)
+        adv_box.setVisible(False)
+        self._adv_box = adv_box
+        left_col.addWidget(adv_box)
 
-        layout.addWidget(form_box)
-
-        # ── 提示与进度 ────────────────────────────────────────────────────────
         self._hint = QLabel()
         self._hint.setStyleSheet("color:#8b95a7;")
         self._hint.setWordWrap(True)
-        layout.addWidget(self._hint)
+        left_col.addWidget(self._hint)
 
         self._progress = QProgressBar()
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
-        layout.addWidget(self._progress)
+        left_col.addWidget(self._progress)
 
-        # ── 按钮 ──────────────────────────────────────────────────────────────
-        btn_row = QHBoxLayout()
+        btn_grid = QGridLayout()
+        btn_grid.setHorizontalSpacing(8)
+        btn_grid.setVerticalSpacing(6)
         self._start_btn = QPushButton("开始回测")
         self._start_btn.clicked.connect(self._on_start)
-        btn_row.addWidget(self._start_btn)
+        btn_grid.addWidget(self._start_btn, 0, 0)
         self._stop_btn = QPushButton("停止")
         self._stop_btn.setEnabled(False)
         self._stop_btn.clicked.connect(self._on_stop)
-        btn_row.addWidget(self._stop_btn)
-        btn_row.addStretch(1)
+        btn_grid.addWidget(self._stop_btn, 0, 1)
         self._save_btn = QPushButton("保存报告")
         self._save_btn.setEnabled(False)
         self._save_btn.clicked.connect(self._on_save)
-        btn_row.addWidget(self._save_btn)
+        btn_grid.addWidget(self._save_btn, 1, 0)
         self._close_btn = QPushButton("关闭")
         self._close_btn.clicked.connect(self.reject)
-        btn_row.addWidget(self._close_btn)
-        layout.addLayout(btn_row)
+        btn_grid.addWidget(self._close_btn, 1, 1)
+        left_col.addLayout(btn_grid)
 
-        # ── 结果 ──────────────────────────────────────────────────────────────
         self._summary = QLabel("尚未运行。")
         self._summary.setWordWrap(True)
-        f = QFont()
-        f.setPointSize(10)
-        self._summary.setFont(f)
-        layout.addWidget(self._summary)
+        self._summary.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        left_col.addWidget(self._summary)
+
+        self._log = QTextEdit()
+        self._log.setReadOnly(True)
+        self._log.setPlaceholderText("进度日志…")
+        left_col.addWidget(self._log, 1)
+
+        left_wrap = QWidget()
+        left_wrap.setLayout(left_col)
+        left_wrap.setFixedWidth(430)
+        root.addWidget(left_wrap)
+
+        # ── 右栏：K 线（含成交点位）+ 明细表 ──────────────────────────────────
+        from pa_agent.gui.chart_widget import ChartWidget
+
+        self._chart = ChartWidget()
+        self._chart.setMinimumHeight(320)
 
         self._table = QTableWidget(0, 8)
         self._table.setHorizontalHeaderLabels(
@@ -180,13 +219,18 @@ class BacktestDialog(QDialog):
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.verticalHeader().setVisible(False)
         self._table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self._table, 1)
 
-        self._log = QTextEdit()
-        self._log.setReadOnly(True)
-        self._log.setMaximumHeight(120)
-        self._log.setPlaceholderText("进度日志…")
-        layout.addWidget(self._log)
+        split = QSplitter(Qt.Orientation.Vertical)
+        split.addWidget(self._chart)
+        split.addWidget(self._table)
+        split.setStretchFactor(0, 3)
+        split.setStretchFactor(1, 2)
+        split.setSizes([560, 240])
+
+        right_col = QVBoxLayout()
+        right_col.setSpacing(8)
+        right_col.addWidget(split, 1)
+        root.addLayout(right_col, 1)
 
         self._update_estimate()
 
@@ -200,6 +244,10 @@ class BacktestDialog(QDialog):
         if not choices:
             choices = [current or "1d"]
         return choices
+
+    def _on_toggle_adv(self, on: bool) -> None:
+        self._adv_box.setVisible(on)
+        self._adv_toggle.setText("高级参数：费用与撮合 ▾" if on else "高级参数：费用与撮合 ▸")
 
     def _update_estimate(self) -> None:
         n = self._bars_spin.value()
@@ -254,6 +302,7 @@ class BacktestDialog(QDialog):
 
         self._result = None
         self._table.setRowCount(0)
+        self._chart.clear_backtest_overlay()
         self._summary.setText("运行中…")
         self._log.clear()
         self._progress.setRange(0, cfg.bar_count)
@@ -321,6 +370,26 @@ class BacktestDialog(QDialog):
             + (f" · {result.error}" if result.error else "")
         )
         self._fill_table(result)
+        self._render_chart(result)
+
+    def _render_chart(self, result: BacktestResult) -> None:
+        """把回测窗口的 K 线画出来，并把每笔成交标到蜡烛上。"""
+        from pa_agent.backtest.chartmap import build_trade_overlay
+        from pa_agent.data.snapshot import build_analysis_frame
+
+        bars = list(getattr(result, "bars", ()) or ())
+        if not bars:
+            return
+        cfg = result.config
+        frame = build_analysis_frame(bars, len(bars), cfg.symbol, cfg.timeframe)
+        if frame is None:
+            self._append_log("⚠ K 线不足，图表未绘制")
+            return
+        self._chart.set_frame_now(frame, fit_view=True)
+        overlay = build_trade_overlay(bars, result.trades)
+        self._chart.set_backtest_overlay(overlay)
+        if overlay.is_empty:
+            self._append_log("（本次没有成交，图上只有 K 线）")
 
     def _on_failed(self, message: str) -> None:
         self._finish_ui()
@@ -382,7 +451,9 @@ class BacktestDialog(QDialog):
         if html_path.suffix.lower() not in (".html", ".htm"):
             html_path = html_path.with_suffix(".html")
         try:
-            html_path.write_text(render_html(self._result), encoding="utf-8")
+            html_path.write_text(
+                render_html(self._result, chart_png=self._chart_png()), encoding="utf-8"
+            )
             csv_path = html_path.with_suffix(".csv")
             csv_path.write_text(trades_to_csv(self._result), encoding="utf-8")
         except OSError as exc:
@@ -391,6 +462,24 @@ class BacktestDialog(QDialog):
         QMessageBox.information(
             self, "已保存", f"报告：{html_path}\n明细：{csv_path}"
         )
+
+    def _chart_png(self) -> bytes | None:
+        """把当前图表抓成 PNG，嵌进报告（失败则报告只留数据表）。"""
+        try:
+            from PyQt6.QtCore import QBuffer, QByteArray, QIODevice
+
+            pixmap = self._chart.grab()
+            if pixmap.isNull():
+                return None
+            data = QByteArray()
+            buffer = QBuffer(data)
+            buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+            pixmap.save(buffer, "PNG")
+            buffer.close()
+            return bytes(data.data()) if data.size() > 0 else None
+        except Exception as exc:  # noqa: BLE001 - 报告不能因截图失败而保存不了
+            logger.debug("chart grab failed: %s", exc)
+            return None
 
     # ── 生命周期 ──────────────────────────────────────────────────────────────
     def closeEvent(self, event: Any) -> None:  # noqa: N802 - Qt 命名

@@ -60,6 +60,9 @@ class ChartWidget(pg.PlotWidget):
         self._ema_line: pg.PlotDataItem | None = None
         self._overlay = OverlayLines()
         self._sr_items: list[pg.GraphicsItem] = []  # support/resistance level lines
+        self._bt_items: list[pg.GraphicsItem] = []  # 回测成交叠加
+        self._bt_bounds: tuple[float, float] | None = None
+        self._bt_overlay = None
         self._pending_decision: dict | None = None
         self._direction_items: list[pg.GraphicsItem] = []
         self._seq_label_font_pt: int = 11
@@ -282,6 +285,100 @@ class ChartWidget(pg.PlotWidget):
             plot.removeItem(item)
         self._sr_items.clear()
 
+    # ── 回测成交叠加 ──────────────────────────────────────────────────────────
+
+    def set_backtest_overlay(self, overlay, *, expand_y: bool = True) -> None:
+        """把回测成交画到蜡烛上：入场/出场标记、持仓段、止损止盈线。
+
+        Parameters
+        ----------
+        overlay:
+            ``pa_agent.backtest.chartmap.TradeOverlay``。
+        expand_y:
+            是否把止损/止盈价纳入当前纵轴范围（避免线画到视野外）。
+        """
+        self._bt_overlay = overlay
+        self._draw_backtest_overlay(overlay, expand_y=expand_y)
+
+    def _draw_backtest_overlay(self, overlay, *, expand_y: bool = True) -> None:
+        """按当前蜡烛重建叠加层（``_render_frame`` 会重画蜡烛，这里同步重画）。"""
+        self._remove_backtest_items()
+        if overlay is None or getattr(overlay, "is_empty", True):
+            return
+        plot = self.getPlotItem()
+
+        for span in overlay.spans:
+            if span.x1 <= span.x0:
+                continue
+            region = pg.LinearRegionItem(
+                values=(span.x0, span.x1),
+                orientation="vertical",
+                movable=False,
+                brush=pg.mkBrush(59, 130, 246, 22),
+                pen=pg.mkPen(None),
+            )
+            plot.addItem(region)
+            self._bt_items.append(region)
+
+        for line in overlay.lines:
+            if line.kind == "fill":
+                pen = pg.mkPen((148, 163, 184, 210), width=1, style=Qt.PenStyle.DashLine)
+            elif line.kind == "stop":
+                pen = pg.mkPen((248, 81, 73, 200), width=1, style=Qt.PenStyle.DotLine)
+            else:
+                pen = pg.mkPen((63, 185, 80, 200), width=1, style=Qt.PenStyle.DotLine)
+            item = pg.PlotDataItem([line.x0, line.x1], [line.y0, line.y1], pen=pen)
+            plot.addItem(item)
+            self._bt_items.append(item)
+
+        for marker in overlay.markers:
+            is_long = marker.direction != "做空"
+            if marker.kind == "entry":
+                color = (239, 68, 68) if is_long else (34, 197, 94)
+                symbol = "t" if is_long else "t1"
+                anchor_y = 1.5
+            else:
+                color = (203, 213, 225)
+                symbol = "s"
+                anchor_y = 0.4
+            dot = pg.ScatterPlotItem(
+                [marker.x],
+                [marker.y],
+                symbol=symbol,
+                size=13,
+                brush=pg.mkBrush(*color, 235),
+                pen=pg.mkPen("#0d1117", width=1),
+            )
+            plot.addItem(dot)
+            self._bt_items.append(dot)
+
+            label = pg.TextItem(text=marker.label, color=color, anchor=(0.5, anchor_y))
+            label.setPos(marker.x, marker.y)
+            plot.addItem(label)
+            self._bt_items.append(label)
+
+        self._bt_bounds = overlay.price_bounds
+        if expand_y and self._bt_bounds is not None:
+            low, high = self._bt_bounds
+            _, (y0, y1) = self.getViewBox().viewRange()
+            if y1 > y0:
+                self.getViewBox().setYRange(min(y0, low), max(y1, high), padding=0.03)
+
+    def clear_backtest_overlay(self) -> None:
+        """移除回测叠加（成交标记、连线、持仓区间）。"""
+        self._bt_overlay = None
+        self._remove_backtest_items()
+
+    def _remove_backtest_items(self) -> None:
+        plot = self.getPlotItem()
+        for item in self._bt_items:
+            try:
+                plot.removeItem(item)
+            except Exception:  # noqa: BLE001 - 已随场景销毁时忽略
+                pass
+        self._bt_items.clear()
+        self._bt_bounds = None
+
     # ── Price-axis resize via viewportEvent ──────────────────────────────────
 
     def _axis_right_edge_wx(self) -> float:
@@ -434,6 +531,10 @@ class ChartWidget(pg.PlotWidget):
             self.addItem(self._ema_line)
 
         self._update_direction_marker()
+
+        # 蜡烛重建后同步重画回测成交（x 坐标随根数变化）
+        if self._bt_overlay is not None:
+            self._draw_backtest_overlay(self._bt_overlay, expand_y=False)
 
         if self._fit_on_next_render:
             self._fit_on_next_render = False

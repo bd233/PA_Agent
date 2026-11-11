@@ -143,6 +143,8 @@ class BacktestResult:
     error: str = ""
     started_iso: str = ""
     finished_iso: str = ""
+    #: 回测窗口用的 K 线（newest-first），供图表叠加成交点位；元素为 KlineBar
+    bars: tuple = ()
 
     @property
     def final_equity(self) -> float:
