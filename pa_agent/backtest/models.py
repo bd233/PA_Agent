@@ -145,6 +145,8 @@ class BacktestResult:
     finished_iso: str = ""
     #: 回测窗口用的 K 线（newest-first），供图表叠加成交点位；元素为 KlineBar
     bars: tuple = ()
+    #: 实际参与回测的 K 线根数（窗口大小），用于在图上标出回测区间
+    window_bars: int = 0
 
     @property
     def final_equity(self) -> float:

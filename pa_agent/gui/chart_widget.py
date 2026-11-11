@@ -310,13 +310,20 @@ class ChartWidget(pg.PlotWidget):
         for span in overlay.spans:
             if span.x1 <= span.x0:
                 continue
+            is_window = getattr(span, "kind", "hold") == "window"
             region = pg.LinearRegionItem(
                 values=(span.x0, span.x1),
                 orientation="vertical",
                 movable=False,
-                brush=pg.mkBrush(59, 130, 246, 22),
+                brush=(
+                    pg.mkBrush(148, 163, 184, 16)
+                    if is_window
+                    else pg.mkBrush(59, 130, 246, 22)
+                ),
                 pen=pg.mkPen(None),
             )
+            if is_window:
+                region.setZValue(-1)  # 回测窗口底色压在蜡烛下面
             plot.addItem(region)
             self._bt_items.append(region)
 

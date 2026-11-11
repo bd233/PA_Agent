@@ -44,10 +44,11 @@ class TradeLine:
 
 @dataclass(frozen=True)
 class TradeSpan:
-    """持仓区间（用于背景着色）。"""
+    """背景区间：``hold``=持仓段，``window``=本次回测覆盖的窗口。"""
 
     x0: float
     x1: float
+    kind: str = "hold"
 
 
 @dataclass(frozen=True)
@@ -59,7 +60,7 @@ class TradeOverlay:
 
     @property
     def is_empty(self) -> bool:
-        return not self.markers
+        return not self.markers and not self.spans
 
 
 def x_for_ts(ts: int, ts_asc: Sequence[int]) -> float:
@@ -83,14 +84,25 @@ def x_for_ts(ts: int, ts_asc: Sequence[int]) -> float:
 def build_trade_overlay(
     bars_newest_first: Sequence[Any],
     trades: Sequence[Any],
+    *,
+    window_bars: int = 0,
 ) -> TradeOverlay:
     """把 ``SimTrade`` 列表映射到蜡烛图上的点、线段与持仓区间。
 
     * ``bars_newest_first`` 中的元素需有 ``ts_open`` 属性（或同名键）。
     * 没有成交时返回空 overlay（调用方仍可只画蜡烛）。
     """
-    if not bars_newest_first or not trades:
+    if not bars_newest_first:
         return TradeOverlay()
+
+    n_bars = len(bars_newest_first)
+    spans: list[TradeSpan] = []
+    if window_bars and window_bars > 0:
+        start = max(0, n_bars - int(window_bars))
+        spans.append(TradeSpan(start - 0.5, n_bars - 0.5, kind="window"))
+
+    if not trades:
+        return TradeOverlay(spans=tuple(spans))
 
     ts_asc: list[int] = []
     for bar in reversed(list(bars_newest_first)):
@@ -98,7 +110,6 @@ def build_trade_overlay(
 
     markers: list[TradeMarker] = []
     lines: list[TradeLine] = []
-    spans: list[TradeSpan] = []
     prices: list[float] = []
 
     for trade in trades:
@@ -146,7 +157,7 @@ def build_trade_overlay(
         if tp2 is not None:
             lines.append(TradeLine(x_entry, tp2, x_exit, tp2, "target2"))
             prices.append(tp2)
-        spans.append(TradeSpan(x_entry, x_exit))
+        spans.append(TradeSpan(x_entry, x_exit, kind="hold"))
         prices.extend([entry, exit_price])
 
     low, high = min(prices), max(prices)

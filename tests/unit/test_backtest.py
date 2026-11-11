@@ -330,6 +330,10 @@ def test_runner_walks_window_and_settles():
     assert all(ts <= 129 * DAY for ts in calls)
     assert result.equity_curve
     assert result.summary()["分析次数"] == 10
+    # 图表用全量 K 线（含回测窗口以外的历史），并记下窗口大小
+    assert len(result.bars) == 130
+    assert result.bars[0].ts_open == 129 * DAY  # newest-first
+    assert result.window_bars == 10
 
 
 def test_runner_reports_insufficient_history():

@@ -90,6 +90,21 @@ def test_short_trade_label_and_color_hint() -> None:
     assert entry.direction == "做空"
 
 
+def test_overlay_marks_backtest_window_even_without_trades() -> None:
+    overlay = build_trade_overlay(_bars(), [], window_bars=3)
+    assert not overlay.markers
+    assert not overlay.is_empty
+    window = overlay.spans[0]
+    assert window.kind == "window"
+    assert (window.x0, window.x1) == (2.5, 5.5)
+
+
+def test_overlay_window_span_precedes_hold_span() -> None:
+    overlay = build_trade_overlay(_bars(), [_trade()], window_bars=4)
+    assert [span.kind for span in overlay.spans] == ["window", "hold"]
+    assert overlay.spans[0].x0 == 1.5
+
+
 def test_report_embeds_chart_when_png_given() -> None:
     cfg = BacktestConfig(symbol="600000", timeframe="1d", bar_count=3)
     result = BacktestResult(config=cfg)

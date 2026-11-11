@@ -288,6 +288,14 @@ class BacktestDialog(QDialog):
             lot_size=self._lot_spin.value(),
         )
 
+        # 用独立的源实例按「对话框里的标的 + 周期」重新订阅：
+        # 主界面当前品种/周期可能与回测参数不同，直接复用会喂错 K 线。
+        run_source, err = self._make_run_source(cfg.symbol, cfg.timeframe)
+        if run_source is None:
+            QMessageBox.warning(self, "数据源不可用", err or "无法按该标的/周期取数。")
+            return
+        self._run_source = run_source
+
         orchestrator = self._build_orchestrator()
         if orchestrator is None:
             QMessageBox.warning(
@@ -313,7 +321,7 @@ class BacktestDialog(QDialog):
 
         runner = BacktestRunner(
             config=cfg,
-            fetch_bars=lambda need: source.latest_snapshot(need),
+            fetch_bars=lambda need: run_source.latest_snapshot(need),
             analyze_fn=analyze,
             cancel_token=token,
             parent=self,
@@ -386,10 +394,12 @@ class BacktestDialog(QDialog):
             self._append_log("⚠ K 线不足，图表未绘制")
             return
         self._chart.set_frame_now(frame, fit_view=True)
-        overlay = build_trade_overlay(bars, result.trades)
+        overlay = build_trade_overlay(
+            bars, result.trades, window_bars=int(getattr(result, "window_bars", 0) or 0)
+        )
         self._chart.set_backtest_overlay(overlay)
-        if overlay.is_empty:
-            self._append_log("（本次没有成交，图上只有 K 线）")
+        if not result.trades:
+            self._append_log("（本次没有成交，图上只有 K 线与回测区间底色）")
 
     def _on_failed(self, message: str) -> None:
         self._finish_ui()
@@ -407,6 +417,46 @@ class BacktestDialog(QDialog):
         self._start_btn.setEnabled(True)
         self._stop_btn.setEnabled(False)
         self._save_btn.setEnabled(self._result is not None)
+        self._release_run_source()
+
+    def _make_run_source(self, symbol: str, timeframe: str) -> tuple[Any, str]:
+        """按对话框参数新建一个数据源并订阅，取数后与主界面互不影响。"""
+        kind = self._current_kind()
+        try:
+            from pa_agent.data.factory import create_data_source
+
+            source = create_data_source(kind)
+            source.connect()
+            source.subscribe(symbol, timeframe)
+        except Exception as exc:  # noqa: BLE001 - 交给调用方提示
+            logger.warning("backtest source init failed: %s", exc)
+            return None, f"{symbol} / {timeframe} 取数失败：{exc}"
+        return source, ""
+
+    def _current_kind(self) -> str:
+        settings = getattr(self._ctx, "settings", None)
+        general = getattr(settings, "general", None) if settings is not None else None
+        kind = getattr(general, "last_data_source", None)
+        if kind:
+            return str(kind)
+        source = getattr(self._ctx, "data_source", None)
+        mapping = {
+            "EastMoneySource": "ashare",
+            "GoldSource": "gold",
+            "TradingViewSource": "tradingview",
+            "EastMoneyFuturesSource": "eastmoney_futures",
+        }
+        return mapping.get(type(source).__name__ if source is not None else "", "ashare")
+
+    def _release_run_source(self) -> None:
+        source = getattr(self, "_run_source", None)
+        self._run_source = None
+        if source is None:
+            return
+        try:
+            source.disconnect()
+        except Exception as exc:  # noqa: BLE001 - 释放失败不影响界面
+            logger.debug("backtest source disconnect failed: %s", exc)
 
     def _fill_table(self, result: BacktestResult) -> None:
         self._table.setRowCount(0)

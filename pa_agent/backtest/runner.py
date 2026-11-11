@@ -83,8 +83,9 @@ class BacktestRunner(QThread):
             if total <= 1:
                 self.failed.emit("回测根数太少（至少 2 根）")
                 return
-            # 图表叠加用：窗口 K 线转成 newest-first
-            result.bars = tuple(reversed(window))
+            # 图表叠加用：把**拉取到的全部**已收盘 K 线转成 newest-first（图上能看到回测窗口以外的历史）
+            result.bars = tuple(reversed(bars))
+            result.window_bars = len(window)
 
             capital = float(cfg.initial_capital)
             consecutive_failures = 0
