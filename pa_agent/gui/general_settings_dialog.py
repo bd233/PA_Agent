@@ -157,6 +157,14 @@ class GeneralSettingsDialog(QDialog):
         self._chart_seq_font_spin.setToolTip("K 线图上 #1、#3… 序号标签的字体大小")
         ui_form.addRow("图表K线序号字号:", self._chart_seq_font_spin)
 
+        self._candle_scheme_combo = QComboBox()
+        self._candle_scheme_combo.addItem("A 股（红涨绿跌）", "cn")
+        self._candle_scheme_combo.addItem("国际（绿涨红跌）", "intl")
+        self._candle_scheme_combo.setToolTip(
+            "K 线阳线/阴线的颜色。\nA 股习惯红涨绿跌，国际习惯绿涨红跌；保存后图表立即重绘。"
+        )
+        ui_form.addRow("K 线涨跌配色:", self._candle_scheme_combo)
+
         form_layout.addWidget(ui_group)
 
         # ── 决策树可视化 ──────────────────────────────────────────────────────
@@ -239,6 +247,11 @@ class GeneralSettingsDialog(QDialog):
         self._context_warning_spin.setValue(int(g.context_warning_threshold_pct))
         self._stream_font_spin.setValue(int(getattr(g, "stream_pane_font_pt", 11)))
         self._chart_seq_font_spin.setValue(int(getattr(g, "chart_seq_label_font_pt", 11)))
+        scheme_idx = self._candle_scheme_combo.findData(
+            getattr(g, "candle_color_scheme", "cn")
+        )
+        if scheme_idx >= 0:
+            self._candle_scheme_combo.setCurrentIndex(scheme_idx)
 
         self._flow_auto_play_check.setChecked(
             getattr(g, "decision_flow_auto_play", False)
@@ -269,6 +282,7 @@ class GeneralSettingsDialog(QDialog):
         g.context_warning_threshold_pct = float(self._context_warning_spin.value())
         g.stream_pane_font_pt = self._stream_font_spin.value()
         g.chart_seq_label_font_pt = self._chart_seq_font_spin.value()
+        g.candle_color_scheme = self._candle_scheme_combo.currentData()  # type: ignore[assignment]
 
         g.decision_flow_auto_play = self._flow_auto_play_check.isChecked()
         g.decision_flow_play_seconds = self._flow_play_seconds_spin.value()

@@ -11,10 +11,51 @@ if TYPE_CHECKING:
     from pa_agent.data.base import KlineBar
 
 # Candle colors — brighter for better contrast on dark backgrounds
-# close >= open → price went UP → green
-# close <  open → price went DOWN → red
-_COLOR_UP = QColor(0, 208, 132)    # #00d084  vivid green
-_COLOR_DOWN = QColor(255, 71, 87)  # #ff4757  vivid red
+# close >= open → price went UP
+# close <  open → price went DOWN
+_GREEN = QColor(0, 208, 132)    # #00d084  vivid green
+_RED = QColor(255, 71, 87)      # #ff4757  vivid red
+
+#: 配色方案 → (阳线颜色, 阴线颜色)
+_SCHEMES: dict[str, tuple[QColor, QColor]] = {
+    # 国际习惯：绿涨红跌
+    "intl": (_GREEN, _RED),
+    # A 股习惯：红涨绿跌
+    "cn": (_RED, _GREEN),
+}
+_DEFAULT_SCHEME = "cn"
+_scheme = _DEFAULT_SCHEME
+
+
+def normalize_candle_scheme(value: object) -> str:
+    """把配置值归一成 ``"cn"`` 或 ``"intl"``（无法识别时按 A 股习惯）。"""
+    text = str(value or "").strip().lower()
+    if text in ("intl", "international", "global", "us", "west"):
+        return "intl"
+    if text in ("cn", "china", "a", "ashare", "a_share", "red_up"):
+        return "cn"
+    return _DEFAULT_SCHEME
+
+
+def set_candle_scheme(scheme: object) -> bool:
+    """切换涨跌配色；返回是否真的发生了变化（调用方据此决定是否重绘）。"""
+    global _scheme
+    resolved = normalize_candle_scheme(scheme)
+    if resolved == _scheme:
+        return False
+    _scheme = resolved
+    return True
+
+
+def get_candle_scheme() -> str:
+    """当前生效的配色方案名。"""
+    return _scheme
+
+
+def candle_colors() -> tuple[QColor, QColor]:
+    """返回当前方案的 (阳线颜色, 阴线颜色) 副本。"""
+    up, down = _SCHEMES[_scheme]
+    return QColor(up), QColor(down)
 
 # Candle body width as a fraction of the x-spacing (0..1)
 _BODY_WIDTH = 0.68
@@ -82,7 +123,8 @@ class CandleItem(pg.GraphicsObject):
         p.end()
 
     def _paint_closed(self, p: QPainter, bar: "KlineBar", x: float) -> None:
-        color = _COLOR_UP if bar.close >= bar.open else _COLOR_DOWN
+        up_color, down_color = candle_colors()
+        color = up_color if bar.close >= bar.open else down_color
         p.setPen(QPen(color, 0))
         p.setBrush(color)
         half = _BODY_WIDTH / 2.0
@@ -92,7 +134,8 @@ class CandleItem(pg.GraphicsObject):
         self._paint_wicks(p, bar, x, body_top, body_bottom, QPen(color, 0))
 
     def _paint_forming(self, p: QPainter, bar: "KlineBar", x: float) -> None:
-        base = _COLOR_UP if bar.close >= bar.open else _COLOR_DOWN
+        up_color, down_color = candle_colors()
+        base = up_color if bar.close >= bar.open else down_color
         outline = QColor(base.red(), base.green(), base.blue(), 255)
         fill = QColor(base.red(), base.green(), base.blue(), 70)
         wick_pen = QPen(outline, 1)

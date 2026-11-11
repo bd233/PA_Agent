@@ -4357,12 +4357,15 @@ class MainWindow(QMainWindow):
             self._apply_chart_display_settings()
 
     def _apply_chart_display_settings(self) -> None:
-        """Sync chart label font sizes and decision-flow zoom from persisted settings."""
+        """Sync chart label font sizes, candle colors and decision-flow zoom from persisted settings."""
         chart = getattr(self, "_chart_widget", None)
         settings = getattr(self._ctx, "settings", None)
         if chart is not None and settings is not None:
             chart.set_seq_label_font_pt(
                 int(getattr(settings.general, "chart_seq_label_font_pt", 11) or 11)
+            )
+            chart.set_candle_color_scheme(
+                str(getattr(settings.general, "candle_color_scheme", "cn") or "cn")
             )
         flow_viz = getattr(self, "_decision_flow_viz_panel", None)
         if flow_viz is not None:

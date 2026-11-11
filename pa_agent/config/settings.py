@@ -94,6 +94,8 @@ class GeneralSettings(BaseModel):
     stream_pane_font_pt: int = Field(default=11, ge=8, le=28)
     #: K 线图上 #序号 标签的字号（pt）
     chart_seq_label_font_pt: int = Field(default=11, ge=6, le=24)
+    #: K 线涨跌配色：cn=A 股习惯（红涨绿跌）；intl=国际习惯（绿涨红跌）
+    candle_color_scheme: Literal["cn", "intl"] = "cn"
     #: 两阶段分析结束后是否自动恢复 K 线图表实时刷新
     auto_resume_chart_after_analysis: bool = False
     #: 持续跟踪分析：有新K线收盘时自动触发新一轮分析

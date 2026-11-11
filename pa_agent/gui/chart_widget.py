@@ -91,6 +91,13 @@ class ChartWidget(pg.PlotWidget):
         if self._latest_frame is not None:
             self._dirty = True
 
+    def set_candle_color_scheme(self, scheme: str) -> None:
+        """切换 K 线涨跌配色（``cn`` 红涨绿跌 / ``intl`` 绿涨红跌）并重绘."""
+        from pa_agent.gui.widgets.candle_item import set_candle_scheme
+
+        if set_candle_scheme(scheme) and self._latest_frame is not None:
+            self._dirty = True
+
     def set_frame(self, frame: "KlineFrame", *, fit_view: bool = False) -> None:
         """Cache the latest KlineFrame; actual redraw happens on the timer."""
         if self._should_skip_redraw(frame):
