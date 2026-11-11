@@ -106,6 +106,10 @@ def normalize_gold_symbol_for_kind(kind: str, symbol: str) -> str:
         if not code or not _looks_like_ashare_code(code):
             return A_SHARE_DEFAULT_SYMBOL
         return code
+    if kind == "sge":
+        from pa_agent.data.sge_source import SGE_DEFAULT_SYMBOL, normalize_sge_symbol
+
+        return normalize_sge_symbol(sym) or SGE_DEFAULT_SYMBOL
     if kind == "tradingview":
         code = normalize_ashare_tv_code(sym)
         if _is_ashare_tv_code(code):
