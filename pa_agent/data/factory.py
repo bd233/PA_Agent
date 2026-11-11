@@ -14,6 +14,7 @@ DataSourceKind = Literal[
     "mt5",
     "tradingview",
     "ashare",
+    "gold",
     "sge",
     "jd_gold",
     "akshare",
@@ -34,18 +35,20 @@ SHOW_ASHARE_DATA_SOURCE: bool = True
 #: A股专属数据源在界面/状态栏的统一文案。
 ASHARE_SOURCE_LABEL = "A股（专属数据源）"
 
-#: 上金所黄金现货在界面/状态栏的统一文案。
+#: 上金所黄金现货在界面/状态栏的统一文案（旧版独立源，现并入「黄金」）。
 SGE_SOURCE_LABEL = "上海黄金（Au99.99）"
 
-#: 银行积存金（京东金融报价）在界面/状态栏的统一文案。
+#: 银行积存金（京东金融报价）在界面/状态栏的统一文案（旧版独立源，现并入「黄金」）。
 JD_GOLD_SOURCE_LABEL = "银行积存金（浙商/民生）"
+
+#: 合并后的黄金数据源文案：品种在品种下拉里选（黄金9999 / 浙商积存金）。
+GOLD_SOURCE_LABEL = "黄金"
 
 #: 出厂下拉框内容：MT5 为默认数据源，排在首位。
 _BASE_SOURCE_CHOICES: tuple[tuple[DataSourceKind, str], ...] = (
     ("mt5", "MT5"),
     ("tradingview", "TradingView"),
-    ("sge", SGE_SOURCE_LABEL),
-    ("jd_gold", JD_GOLD_SOURCE_LABEL),
+    ("gold", GOLD_SOURCE_LABEL),
 )
 
 
@@ -64,14 +67,21 @@ DATA_SOURCE_CHOICES: tuple[tuple[DataSourceKind, str], ...] = data_source_choice
 
 #: 不在下拉框里显示、但仍可通过 kind 创建的源（含未开启显示的 ashare）。
 _HIDDEN_KINDS: frozenset[DataSourceKind] = frozenset(
-    {"ashare", "akshare", "tushare", "yfinance", "eastmoney_futures"}
+    {"ashare", "akshare", "tushare", "yfinance", "eastmoney_futures", "sge", "jd_gold"}
 )
+
+#: 旧版独立黄金源 → 合并后的 `gold`（老配置里的 last_data_source 仍能平滑迁移）。
+_LEGACY_KIND_ALIASES: dict[str, DataSourceKind] = {
+    "sge": "gold",
+    "jd_gold": "gold",
+}
 
 _DEFAULT_SYMBOLS: dict[DataSourceKind, str] = {
     "mt5": GOLD_MT5_SYMBOL,
     "tradingview": GOLD_TV_SYMBOL,
     "ashare": A_SHARE_DEFAULT_SYMBOL,
-    "sge": "Au99.99",
+    "gold": "黄金9999",
+    "sge": "黄金9999",
     "jd_gold": "浙商积存金",
     "akshare": A_SHARE_DEFAULT_SYMBOL,
     "eastmoney_futures": "RB0 螺纹钢",
@@ -87,6 +97,8 @@ def default_tradingview_exchange() -> str:
 
 def normalize_data_source_kind(kind: str | None) -> DataSourceKind:
     """Return a supported data-source kind, defaulting to MT5."""
+    if kind in _LEGACY_KIND_ALIASES:
+        kind = _LEGACY_KIND_ALIASES[kind]
     supported = {k for k, _ in DATA_SOURCE_CHOICES} | _HIDDEN_KINDS
     if kind in supported:
         return kind  # type: ignore[return-value]
@@ -103,6 +115,8 @@ def data_source_label(kind: str | None) -> str:
         return ASHARE_SOURCE_LABEL
     if normalized == "eastmoney_futures":
         return "东方财富期货"
+    if normalized == "gold":
+        return GOLD_SOURCE_LABEL
     if normalized == "sge":
         return SGE_SOURCE_LABEL
     if normalized == "jd_gold":
@@ -135,6 +149,10 @@ def create_data_source(kind: str | None) -> DataSource:
         from pa_agent.data.eastmoney_futures_source import EastMoneyFuturesSource
 
         return EastMoneyFuturesSource()
+    if normalized == "gold":
+        from pa_agent.data.gold_source import GoldSource
+
+        return GoldSource()
     if normalized == "sge":
         from pa_agent.data.sge_source import SgeSource
 

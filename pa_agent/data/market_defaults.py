@@ -106,6 +106,10 @@ def normalize_gold_symbol_for_kind(kind: str, symbol: str) -> str:
         if not code or not _looks_like_ashare_code(code):
             return A_SHARE_DEFAULT_SYMBOL
         return code
+    if kind == "gold":
+        from pa_agent.data.gold_source import GOLD_DEFAULT_SYMBOL, normalize_gold_instrument
+
+        return normalize_gold_instrument(sym) or GOLD_DEFAULT_SYMBOL
     if kind == "sge":
         from pa_agent.data.sge_source import SGE_DEFAULT_SYMBOL, normalize_sge_symbol
 

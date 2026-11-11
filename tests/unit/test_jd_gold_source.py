@@ -88,7 +88,8 @@ def test_latest_snapshot_daily_uses_close_and_zero_volume(monkeypatch: pytest.Mo
 
 
 def test_factory_wires_jd_gold() -> None:
-    assert "jd_gold" in {k for k, _ in factory.DATA_SOURCE_CHOICES}
-    assert factory.default_symbol_for_kind("jd_gold") == JD_GOLD_DEFAULT_SYMBOL
-    assert factory.data_source_label("jd_gold") == factory.JD_GOLD_SOURCE_LABEL
-    assert isinstance(factory.create_data_source("jd_gold"), JdGoldSource)
+    # 旧 kind 不再单独占下拉位，但仍是合法 kind 并归一为合并后的「黄金」
+    assert "gold" in {k for k, _ in factory.DATA_SOURCE_CHOICES}
+    assert factory.normalize_data_source_kind("jd_gold") == "gold"
+    assert factory.default_symbol_for_kind("jd_gold") == "黄金9999"
+    assert isinstance(factory.create_data_source("jd_gold"), factory.create_data_source("gold").__class__)

@@ -9,6 +9,7 @@ DataSourceKind = Literal[
     "mt5",
     "tradingview",
     "ashare",
+    "gold",
     "sge",
     "jd_gold",
     "akshare",
@@ -122,6 +123,9 @@ class GeneralSettings(BaseModel):
     def _coerce_legacy_data_source(cls, v: object) -> object:
         if v in ("yfinance", "eastmoney", "adata", "a_share"):
             return "ashare"
+        # 旧版把上金所 / 银行积存金拆成两个源，现合并为「黄金」（品种在内层下拉里选）
+        if v in ("sge", "jd_gold"):
+            return "gold"
         if v == "tushare":
             return "tushare"
         return v

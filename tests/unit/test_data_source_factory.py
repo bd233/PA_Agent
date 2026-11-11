@@ -46,7 +46,7 @@ def test_ashare_shown_in_ui_by_default():
 
     assert factory.SHOW_ASHARE_DATA_SOURCE is True
     assert "ashare" in {k for k, _ in DATA_SOURCE_CHOICES}
-    assert [k for k, _ in DATA_SOURCE_CHOICES] == ["mt5", "tradingview", "sge", "jd_gold", "ashare"]
+    assert [k for k, _ in DATA_SOURCE_CHOICES] == ["mt5", "tradingview", "gold", "ashare"]
     # kind 本身始终合法：脚本/后端照样能创建
     assert normalize_data_source_kind("ashare") == "ashare"
     assert isinstance(create_data_source("ashare"), EastMoneySource)
@@ -57,12 +57,11 @@ def test_ashare_shown_when_code_switch_is_on():
 
     choices = data_source_choices(show_ashare=True)
     assert choices[-1] == ("ashare", ASHARE_SOURCE_LABEL)
-    assert [k for k, _ in choices] == ["mt5", "tradingview", "sge", "jd_gold", "ashare"]
+    assert [k for k, _ in choices] == ["mt5", "tradingview", "gold", "ashare"]
     assert [k for k, _ in data_source_choices(show_ashare=False)] == [
         "mt5",
         "tradingview",
-        "sge",
-        "jd_gold",
+        "gold",
     ]
 
 
@@ -85,32 +84,38 @@ def test_ashare_label_uses_shared_constant():
 
 
 def test_create_data_source_returns_expected_types():
-    from pa_agent.data.sge_source import SgeSource
+    from pa_agent.data.gold_source import GoldSource
 
     assert isinstance(create_data_source("mt5"), MT5Source)
     assert isinstance(create_data_source("tradingview"), TradingViewSource)
     assert isinstance(create_data_source("ashare"), EastMoneySource)
     assert isinstance(create_data_source("tushare"), TushareSource)
-    assert isinstance(create_data_source("sge"), SgeSource)
+    assert isinstance(create_data_source("gold"), GoldSource)
+    # 旧 kind 仍合法（向后兼容），并统一归一为 gold
+    assert isinstance(create_data_source("sge"), GoldSource)
 
 
-def test_sge_kind_is_visible_and_defaults_to_au9999():
-    from pa_agent.data.factory import SGE_SOURCE_LABEL, data_source_label
+def test_gold_kind_is_visible_and_defaults_to_instrument():
+    from pa_agent.data.factory import GOLD_SOURCE_LABEL, data_source_label
 
-    assert ("sge", SGE_SOURCE_LABEL) in DATA_SOURCE_CHOICES
-    assert SGE_SOURCE_LABEL == "上海黄金（Au99.99）"
-    assert data_source_label("sge") == SGE_SOURCE_LABEL
-    assert default_symbol_for_kind("sge") == "Au99.99"
-    assert normalize_data_source_kind("sge") == "sge"
+    assert ("gold", GOLD_SOURCE_LABEL) in DATA_SOURCE_CHOICES
+    assert GOLD_SOURCE_LABEL == "黄金"
+    assert data_source_label("gold") == GOLD_SOURCE_LABEL
+    assert default_symbol_for_kind("gold") == "黄金9999"
+    assert normalize_data_source_kind("gold") == "gold"
+    # 旧的两个黄金 kind 平滑归一为 gold
+    assert normalize_data_source_kind("sge") == "gold"
+    assert normalize_data_source_kind("jd_gold") == "gold"
 
 
-def test_switch_to_sge_maps_gold_symbols_to_au9999():
+def test_switch_to_gold_maps_symbols_to_instruments():
     from pa_agent.data.market_defaults import normalize_gold_symbol_for_kind
 
-    assert normalize_gold_symbol_for_kind("sge", "XAUUSDm") == "Au99.99"
-    assert normalize_gold_symbol_for_kind("sge", "XAUUSD") == "Au99.99"
-    assert normalize_gold_symbol_for_kind("sge", "") == "Au99.99"
-    assert normalize_gold_symbol_for_kind("sge", "Au(T+D)") == "Au(T+D)"
+    assert normalize_gold_symbol_for_kind("gold", "XAUUSDm") == "黄金9999"
+    assert normalize_gold_symbol_for_kind("gold", "XAUUSD") == "黄金9999"
+    assert normalize_gold_symbol_for_kind("gold", "") == "黄金9999"
+    assert normalize_gold_symbol_for_kind("gold", "Au99.99") == "黄金9999"
+    assert normalize_gold_symbol_for_kind("gold", "CZB") == "浙商积存金"
 
 
 def test_default_symbols_per_kind():

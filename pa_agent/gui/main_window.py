@@ -443,8 +443,8 @@ class MainWindow(QMainWindow):
             "K 线数据来源：\n"
             "· MT5（默认，需终端登录）\n"
             "· TradingView（tvDatafeed，A股/港股可走 SSE/SZSE）\n"
-            "· 上海黄金（上金所 Au99.99 现货，日线+当日分时，无成交量）\n"
-            "· 银行积存金（浙商/民生等京东金融报价，日线约一年+当日分时，无成交量）"
+            "· 黄金（品种下拉里选 黄金9999 上金所现货 / 浙商积存金 银行报价；\n"
+            "   日线 + 当日分时，均无成交量）"
         )
         if SHOW_ASHARE_DATA_SOURCE:
             _ds_tip += f"\n· {ASHARE_SOURCE_LABEL}（HTTP 直连，含腾讯/免费替补）"
@@ -1057,11 +1057,8 @@ class MainWindow(QMainWindow):
         if kind in ("ashare", "akshare"):
             if self._tf_combo.currentText() not in ("1h", "4h", "1d"):
                 self._tf_combo.setCurrentText(A_SHARE_DEFAULT_TIMEFRAME)
-        elif kind == "sge":
-            # 上金所：日线可回溯 2400 根，分钟周期只有当日 → 切源时固定回日线
-            self._tf_combo.setCurrentText("1d")
-        elif kind == "jd_gold":
-            # 银行积存金：日线最多约一年，分钟周期只有当日 → 切源时固定回日线
+        elif kind == "gold":
+            # 黄金（上金所现货 / 银行积存金）：日线可回溯，分钟周期只有当日 → 切源时固定回日线
             self._tf_combo.setCurrentText("1d")
 
     def _apply_tv_exchange_to_source(self, data_source: Any) -> None:
@@ -1135,15 +1132,15 @@ class MainWindow(QMainWindow):
                 self._start_refresh_loop()
 
     def _apply_data_source_symbol_placeholder(self) -> None:
-        line = self._symbol_combo.lineEdit()
-        if line is None:
-            return
         kind = self._current_data_source_kind()
         # 东方财富期货: 两级选择 (品种→合约), 显示品种下拉框, 标签改"合约"
         is_futures = kind == "eastmoney_futures"
         self._variety_label.setVisible(is_futures)
         self._variety_combo.setVisible(is_futures)
         self._symbol_label.setText("合约:" if is_futures else "品种:")
+        line = self._symbol_combo.lineEdit()
+        if line is None:
+            return
         if kind == "tradingview":
             line.setPlaceholderText(
                 "A股 6 位 / 港股 1810 / 名称 小米集团；交易所可自动；或 XAUUSD+OANDA"
@@ -1152,10 +1149,8 @@ class MainWindow(QMainWindow):
             line.setPlaceholderText("选择左侧品种后在此选合约, 或直接输入如 AO2509")
         elif kind in ("ashare", "akshare", "tushare"):
             line.setPlaceholderText("A股 6 位代码，如 600519；指数 000300 或 sh000300")
-        elif kind == "sge":
-            line.setPlaceholderText("上金所现货，如 Au99.99 / Au(T+D)；无历史成交量")
-        elif kind == "jd_gold":
-            line.setPlaceholderText("银行积存金，如 浙商积存金 / 民生积存金；无成交量")
+        elif kind == "gold":
+            line.setPlaceholderText("在品种下拉里选择：黄金9999 / 浙商积存金")
         else:
             line.setPlaceholderText("输入 MT5 品种名，如 XAUUSDm…")
 
@@ -1166,6 +1161,12 @@ class MainWindow(QMainWindow):
         data_source = getattr(self._ctx, "data_source", None)
         current = self._symbol_combo.currentText().strip()
         kind = self._current_data_source_kind()
+
+        # 黄金: 品种固定几个可选项 → 只读下拉，不接受手输
+        if kind == "gold":
+            self._populate_gold_instruments(current)
+            return
+        self._symbol_combo.setEditable(True)
 
         # 东方财富期货: 两级选择 (品种 → 合约)
         if kind == "eastmoney_futures" and data_source is not None:
@@ -1194,6 +1195,24 @@ class MainWindow(QMainWindow):
             if self._symbol_combo.findText(default) < 0:
                 self._symbol_combo.addItem(default)
             self._symbol_combo.setCurrentText(default)
+        self._symbol_combo.blockSignals(False)
+        self._apply_data_source_symbol_placeholder()
+
+    def _populate_gold_instruments(self, current: str) -> None:
+        """黄金数据源：品种用只读下拉，只有「黄金9999 / 浙商积存金」。"""
+        from pa_agent.data.gold_source import (
+            GOLD_DEFAULT_SYMBOL,
+            GOLD_INSTRUMENTS,
+            normalize_gold_instrument,
+        )
+
+        picked = normalize_gold_instrument(current) or GOLD_DEFAULT_SYMBOL
+        self._symbol_combo.blockSignals(True)
+        self._symbol_combo.setEditable(False)
+        self._symbol_combo.clear()
+        self._symbol_combo.addItems(list(GOLD_INSTRUMENTS))
+        idx = self._symbol_combo.findText(picked)
+        self._symbol_combo.setCurrentIndex(idx if idx >= 0 else 0)
         self._symbol_combo.blockSignals(False)
         self._apply_data_source_symbol_placeholder()
 
@@ -1392,7 +1411,7 @@ class MainWindow(QMainWindow):
                 timeframe = (
                     A_SHARE_DEFAULT_TIMEFRAME
                     if kind in ("ashare", "akshare", "tushare")
-                    else "1d" if kind in ("sge", "jd_gold") else "15m"
+                    else "1d" if kind == "gold" else "15m"
                 )
 
             new_source = create_data_source(kind)
