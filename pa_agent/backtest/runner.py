@@ -9,6 +9,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from pa_agent.backtest.engine import (
     equity_points,
     is_no_order,
+    meta_from_payload,
     plan_from_decision,
     simulate_trade,
 )
@@ -124,7 +125,7 @@ class BacktestRunner(QThread):
                     continue
 
                 try:
-                    decision = self._analyze(frame) or {}
+                    payload = self._analyze(frame) or {}
                     consecutive_failures = 0
                 except Exception as exc:  # noqa: BLE001 - 单步失败不中断整轮回测
                     consecutive_failures += 1
@@ -148,6 +149,13 @@ class BacktestRunner(QThread):
                         break
                     continue
 
+                # 兼容两种返回：完整分析包 {"decision","diagnosis","terminal"} 或单个 decision
+                if isinstance(payload, dict) and "decision" in payload:
+                    decision = payload.get("decision") or {}
+                    meta = meta_from_payload(payload, decision)
+                else:
+                    decision = payload if isinstance(payload, dict) else {}
+                    meta = meta_from_payload(None, decision)
                 plan = plan_from_decision(int(asof.ts_open), decision)
                 if is_no_order(plan):
                     result.steps.append(
@@ -158,6 +166,7 @@ class BacktestRunner(QThread):
                             entry=plan.entry,
                             note="AI 未给单",
                             traded=False,
+                            meta=meta,
                         )
                     )
                     self.progress.emit(
@@ -175,6 +184,7 @@ class BacktestRunner(QThread):
                             entry=plan.entry,
                             note="挂单未成交/仓位不足",
                             traded=False,
+                            meta=meta,
                         )
                     )
                     self.progress.emit(
@@ -194,6 +204,7 @@ class BacktestRunner(QThread):
                         entry=plan.entry,
                         note=f"{trade.exit_reason} {trade.pnl:+.2f}",
                         traded=True,
+                        meta=meta,
                     )
                 )
                 self.progress.emit(
@@ -227,17 +238,26 @@ class BacktestRunner(QThread):
 
 
 def make_analyze_fn(orchestrator: Any, cancel_token: Any) -> Callable[[Any], dict[str, Any]]:
-    """把 TwoStageOrchestrator 包成 ``frame -> decision dict``。"""
+    """把 TwoStageOrchestrator 包成 ``frame -> 分析结果包``。
+
+    返回 ``{"decision": ..., "diagnosis": ..., "terminal": ...}``，
+    这样回测报告除了「下不下单」还能看到趋势、周期、阶段、理由与评分。
+    """
 
     def _analyze(frame: Any) -> dict[str, Any]:
         record = orchestrator.submit(frame, cancel_token, lambda _evt: None)
         if record is None:
             return {}
         s2 = getattr(record, "stage2_decision", None) or {}
+        s1 = getattr(record, "stage1_diagnosis", None) or {}
         if not isinstance(s2, dict):
             return {}
         decision = s2.get("decision")
-        return decision if isinstance(decision, dict) else {}
+        return {
+            "decision": decision if isinstance(decision, dict) else {},
+            "diagnosis": s1 if isinstance(s1, dict) else {},
+            "terminal": s2.get("terminal") if isinstance(s2.get("terminal"), dict) else {},
+        }
 
     return _analyze
 

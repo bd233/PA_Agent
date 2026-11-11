@@ -24,11 +24,48 @@ from pa_agent.backtest.models import (
     ORDER_MARKET,
     ORDER_STOP,
     BacktestConfig,
+    DecisionMeta,
     SimTrade,
     TradePlan,
 )
 
 _HALF = 1e-9
+
+#: 阶段一的周期位置 / 趋势 / 阶段取值 → 中文（报告展示用）
+CYCLE_ZH = {
+    "spike": "尖峰",
+    "micro_channel": "微型通道",
+    "tight_channel": "窄通道",
+    "normal_channel": "正常通道",
+    "broad_channel": "宽通道",
+    "trending_tr": "趋势型交易区间",
+    "trading_range": "交易区间",
+    "extreme_tr": "极端交易区间",
+    "reversal": "反转",
+    "unknown": "未知",
+}
+DIRECTION_ZH = {
+    "bullish": "偏多",
+    "bearish": "偏空",
+    "neutral": "中性",
+    "long": "做多",
+    "short": "做空",
+}
+PHASE_ZH = {
+    "stable": "稳定",
+    "transition": "转换中",
+    "climax": "高潮",
+    "spike": "尖峰中",
+}
+RISK_ZH = {"none": "无", "low": "低", "medium": "中", "high": "高"}
+
+
+def zh(value: Any, table: dict[str, str]) -> str:
+    """把英文字段翻成中文，未知值原样返回。"""
+    text = str(value or "").strip()
+    if not text or text in ("不适用", "none", "null"):
+        return "" if text in ("", "none", "null") else text
+    return table.get(text, text)
 
 
 def _num(value: Any) -> float | None:
@@ -41,6 +78,70 @@ def _num(value: Any) -> float | None:
     if math.isnan(out) or math.isinf(out):
         return None
     return out
+
+
+def meta_from_payload(
+    payload: dict[str, Any] | None, decision: dict[str, Any] | None = None
+) -> DecisionMeta:
+    """从「分析结果包」里抽出阶段一判断 + 终态，供报告展示。
+
+    *payload* 可以是 ``{"decision": ..., "diagnosis": ..., "terminal": ...}``，
+    也可以直接是 decision 字典（旧调用方式）。
+    """
+    data = payload if isinstance(payload, dict) else {}
+    dec = decision if isinstance(decision, dict) else None
+    if dec is None:
+        inner = data.get("decision")
+        dec = inner if isinstance(inner, dict) else data
+    diag = data.get("diagnosis")
+    diag = diag if isinstance(diag, dict) else {}
+    terminal = data.get("terminal")
+    terminal = terminal if isinstance(terminal, dict) else {}
+
+    trend_ctx = diag.get("trend_context")
+    trend_ctx = trend_ctx if isinstance(trend_ctx, dict) else {}
+    trend = zh(trend_ctx.get("primary_direction"), DIRECTION_ZH) or zh(
+        diag.get("direction"), DIRECTION_ZH
+    )
+    background = zh(trend_ctx.get("background_direction"), DIRECTION_ZH)
+
+    patterns = diag.get("detected_patterns") or []
+    if not isinstance(patterns, (list, tuple)):
+        patterns = []
+    factors = dec.get("key_factors") or []
+    if not isinstance(factors, (list, tuple)):
+        factors = []
+
+    def _int(value: Any) -> int | None:
+        num = _num(value)
+        return None if num is None else int(round(num))
+
+    return DecisionMeta(
+        trend=trend,
+        trend_background=background,
+        cycle=zh(diag.get("cycle_position"), CYCLE_ZH),
+        alt_cycle=zh(diag.get("alternative_cycle_position"), CYCLE_ZH),
+        phase=" · ".join(
+            part
+            for part in (
+                zh(diag.get("market_phase"), PHASE_ZH),
+                zh(diag.get("spike_stage"), PHASE_ZH),
+            )
+            if part
+        ),
+        spike_stage=zh(diag.get("spike_stage"), PHASE_ZH),
+        patterns=tuple(str(p) for p in patterns if p),
+        conf_diag=_int(dec.get("diagnosis_confidence") or diag.get("diagnosis_confidence")),
+        conf_trade=_int(dec.get("trade_confidence")),
+        win_rate=_num(dec.get("estimated_win_rate")),
+        terminal_id=str(terminal.get("node_id") or ""),
+        terminal_outcome=str(terminal.get("outcome") or ""),
+        terminal_label=str(terminal.get("label") or ""),
+        reasoning=str(dec.get("reasoning") or "").strip(),
+        risk=str(dec.get("risk_assessment") or "").strip(),
+        invalidation=str(dec.get("invalidation_condition") or "").strip(),
+        key_factors=tuple(str(f) for f in factors if f),
+    )
 
 
 def plan_from_decision(ts_open: int, decision: dict[str, Any] | None) -> TradePlan:

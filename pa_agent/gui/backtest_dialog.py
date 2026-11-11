@@ -32,7 +32,7 @@ from PyQt6.QtWidgets import (
 )
 
 from pa_agent.backtest.models import BacktestConfig, BacktestResult
-from pa_agent.backtest.report import render_html, trades_to_csv
+from pa_agent.backtest.report import render_html, steps_to_csv, trades_to_csv
 from pa_agent.backtest.runner import BacktestRunner, NullPendingWriter, make_analyze_fn
 
 logger = logging.getLogger(__name__)
@@ -506,11 +506,15 @@ class BacktestDialog(QDialog):
             )
             csv_path = html_path.with_suffix(".csv")
             csv_path.write_text(trades_to_csv(self._result), encoding="utf-8")
+            steps_path = html_path.with_name(html_path.stem + "_steps.csv")
+            steps_path.write_text(steps_to_csv(self._result), encoding="utf-8")
         except OSError as exc:
             QMessageBox.critical(self, "保存失败", str(exc))
             return
         QMessageBox.information(
-            self, "已保存", f"报告：{html_path}\n明细：{csv_path}"
+            self,
+            "已保存",
+            f"报告：{html_path}\n交易明细：{csv_path}\n每步决策：{steps_path}",
         )
 
     def _chart_png(self) -> bytes | None:

@@ -31,6 +31,12 @@ tr:hover td { background:#151b25; }
 .kv div { display:flex; justify-content:space-between; border-bottom:1px dashed #1e2531; padding:3px 0; }
 .kv span:first-child { color:#8b95a7; }
 code { color:#9fd1ff; }
+table.wrap td { white-space:normal; text-align:left; vertical-align:top; }
+table.wrap td:first-child { white-space:nowrap; width:110px; }
+.badge { display:inline-block; padding:1px 7px; border-radius:9px; font-size:11px; border:1px solid #2a3342; color:#9aa6b8; }
+.badge.ok { color:#7ee0a0; border-color:#245e3c; }
+.badge.no { color:#9aa6b8; }
+.dim { color:#7d8798; }
 """
 
 
@@ -89,9 +95,12 @@ def _summary_cards(result: BacktestResult) -> str:
         ("总收益率", f"{s['总收益率']:+.2%}", cls),
         ("胜率", f"{s['胜率']:.1%}", ""),
         ("下单次数", f"{s['下单次数']}", ""),
+        ("下单率", f"{s['下单率']:.0%}", ""),
         ("盈亏比", "—" if s["盈亏比"] is None else f"{s['盈亏比']:.2f}", ""),
         ("最大回撤", f"{s['最大回撤']:.2%}", "neg" if s["最大回撤"] else ""),
         ("分析次数", f"{s['分析次数']}", ""),
+        ("平均诊断分", "—" if s["平均诊断分"] is None else f"{s['平均诊断分']:.0f}", ""),
+        ("平均交易分", "—" if s["平均交易分"] is None else f"{s['平均交易分']:.0f}", ""),
     ]
     return "".join(
         f'<div class="card"><div class="k">{k}</div><div class="v {c}">{v}</div></div>'
@@ -130,30 +139,117 @@ def _trade_table(result: BacktestResult) -> str:
     )
 
 
+def _pct_text(value: Any) -> str:
+    if value is None:
+        return "-"
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return "-"
+    if num > 1:  # 有的模型会给 0-100 的百分数
+        num = num / 100.0
+    return f"{num:.0%}"
+
+
 def _step_table(result: BacktestResult, limit: int = 400) -> str:
     if not result.steps:
         return '<p class="note">（无步骤记录）</p>'
     rows = []
     for st in result.steps[:limit]:
+        meta = st.meta
+        traded = '<span class="badge ok">成交</span>' if st.traded else '<span class="badge no">未成交</span>'
+        outcome = "下单" if st.traded else ("不下单" if st.order_type in ("不下单", "") else "未成交")
         rows.append(
             "<tr>"
             f"<td>{fmt_ts(st.ts_open)}</td>"
-            f"<td>{html.escape(st.order_type or '-')}</td>"
+            f"<td>{traded} {outcome}</td>"
             f"<td>{html.escape(st.direction or '-')}</td>"
+            f"<td>{html.escape(st.order_type or '-')}</td>"
             f"<td>{'-' if st.entry is None else f'{st.entry:.3f}'}</td>"
+            f"<td>{'' if meta is None or meta.conf_diag is None else meta.conf_diag}</td>"
+            f"<td>{'' if meta is None or meta.conf_trade is None else meta.conf_trade}</td>"
+            f"<td>{_pct_text(None if meta is None else meta.win_rate)}</td>"
+            f"<td>{html.escape('' if meta is None else meta.trend or '-')}</td>"
+            f"<td>{html.escape('' if meta is None else meta.cycle or '-')}</td>"
+            f"<td>{html.escape('' if meta is None else meta.phase or '-')}</td>"
             f"<td>{html.escape(st.note or '')}</td>"
+            f"<td>{html.escape('' if meta is None else meta.terminal_label or '-')}</td>"
             "</tr>"
         )
     more = ""
     if len(result.steps) > limit:
         more = f'<p class="note">仅显示前 {limit} 步，共 {len(result.steps)} 步。</p>'
     return (
-        "<table><thead><tr><th>K线时间</th><th>挂单类型</th><th>方向</th>"
-        "<th>计划入场</th><th>结果</th></tr></thead><tbody>"
-        + "".join(rows)
-        + "</tbody></table>"
-        + more
+        "<table><thead><tr>"
+        "<th>K线时间</th><th>结果</th><th>方向</th><th>挂单</th><th>计划入场</th>"
+        "<th>诊断分</th><th>交易分</th><th>预估胜率</th><th>趋势</th><th>周期</th>"
+        "<th>阶段</th><th>结果说明</th><th>终态</th>"
+        "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>" + more
     )
+
+
+def _rationale_table(result: BacktestResult, limit: int = 200) -> str:
+    """AI 的理由 / 关键因素 / 风险（文本较长，单独一张可换行的表）。"""
+    items = [st for st in result.steps if st.meta is not None and not st.meta.is_empty]
+    if not items:
+        return '<p class="note">（本次没有可展示的判断依据）</p>'
+    rows = []
+    for st in items[:limit]:
+        meta = st.meta
+        assert meta is not None
+        factors = "".join(f"<li>{html.escape(f)}</li>" for f in meta.key_factors)
+        factors_html = f"<ul>{factors}</ul>" if factors else "-"
+        risks = "<br>".join(
+            part
+            for part in (
+                html.escape(meta.risk) if meta.risk else "",
+                f'失效条件：{html.escape(meta.invalidation)}' if meta.invalidation else "",
+            )
+            if part
+        ) or "-"
+        rows.append(
+            "<tr>"
+            f"<td>{fmt_ts(st.ts_open)}</td>"
+            f"<td>{html.escape(meta.terminal_label or st.note or '-')}</td>"
+            f"<td>{html.escape(meta.reasoning or '-')}</td>"
+            f"<td>{factors_html}</td>"
+            f"<td>{risks}</td>"
+            "</tr>"
+        )
+    more = ""
+    if len(items) > limit:
+        more = f'<p class="note">仅显示前 {limit} 步，共 {len(items)} 步。</p>'
+    return (
+        '<table class="wrap"><thead><tr>'
+        "<th>K线时间</th><th>结论</th><th>理由</th><th>关键因素</th><th>风险 / 失效条件</th>"
+        "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>" + more
+    )
+
+
+def _decision_stats(result: BacktestResult) -> str:
+    """决策分布：挂单类型 / 终态 / 周期 / 趋势 各出现多少次。"""
+    steps = result.steps
+    if not steps:
+        return '<p class="note">（无步骤记录）</p>'
+    groups: list[tuple[str, list[str]]] = [
+        ("挂单类型", [st.order_type or "不下单" for st in steps]),
+        ("终态", [st.meta.terminal_label if st.meta and st.meta.terminal_label else "—" for st in steps]),
+        ("周期", [st.meta.cycle if st.meta and st.meta.cycle else "—" for st in steps]),
+        ("趋势", [st.meta.trend if st.meta and st.meta.trend else "—" for st in steps]),
+        ("阶段", [st.meta.phase if st.meta and st.meta.phase else "—" for st in steps]),
+    ]
+    blocks = []
+    for name, values in groups:
+        counter: dict[str, int] = {}
+        for value in values:
+            key = str(value or "—")
+            counter[key] = counter.get(key, 0) + 1
+        parts = "".join(
+            f'<div><span>{html.escape(k)}</span><span>{v} 次</span></div>'
+            for k, v in sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
+        )
+        blocks.append(f'<h3 style="font-size:13px;margin:14px 0 6px">{name}</h3><div class="kv">{parts}</div>')
+    return "".join(blocks)
 
 
 def _config_table(result: BacktestResult) -> str:
@@ -216,8 +312,14 @@ def render_html(
 <h2>交易明细（{len(result.trades)} 笔）</h2>
 {_trade_table(result)}
 
+<h2>决策分布</h2>
+{_decision_stats(result)}
+
 <h2>逐步记录（{len(result.steps)} 步）</h2>
 {_step_table(result)}
+
+<h2>判断依据（趋势 / 周期 / 阶段 / 理由）</h2>
+{_rationale_table(result)}
 
 <h2>回测参数</h2>
 {_config_table(result)}
@@ -232,6 +334,61 @@ def render_html(
 ⑥ AI 判断存在随机性，同一段历史多次回测结果会有差异；样本量小（分析 {s['分析次数']} 次）时结论仅供方向参考。
 </div>
 </body></html>"""
+
+
+def steps_to_csv(result: BacktestResult) -> str:
+    """每步决策 CSV（含趋势/周期/阶段/评分/理由，UTF-8 BOM）。"""
+    buf = io.StringIO()
+    fields = [
+        "K线时间",
+        "结果",
+        "方向",
+        "挂单类型",
+        "计划入场",
+        "诊断分",
+        "交易分",
+        "预估胜率",
+        "趋势",
+        "背景趋势",
+        "周期",
+        "备选周期",
+        "阶段",
+        "终态",
+        "结果说明",
+        "理由",
+        "关键因素",
+        "风险",
+        "失效条件",
+    ]
+    buf.write("\ufeff")
+    writer = csv.DictWriter(buf, fieldnames=fields)
+    writer.writeheader()
+    for st in result.steps:
+        meta = st.meta
+        writer.writerow(
+            {
+                "K线时间": fmt_ts(st.ts_open),
+                "结果": "成交" if st.traded else ("不下单" if st.order_type in ("不下单", "") else "未成交"),
+                "方向": st.direction,
+                "挂单类型": st.order_type,
+                "计划入场": "" if st.entry is None else round(st.entry, 4),
+                "诊断分": "" if meta is None or meta.conf_diag is None else meta.conf_diag,
+                "交易分": "" if meta is None or meta.conf_trade is None else meta.conf_trade,
+                "预估胜率": "" if meta is None else _pct_text(meta.win_rate),
+                "趋势": "" if meta is None else meta.trend,
+                "背景趋势": "" if meta is None else meta.trend_background,
+                "周期": "" if meta is None else meta.cycle,
+                "备选周期": "" if meta is None else meta.alt_cycle,
+                "阶段": "" if meta is None else meta.phase,
+                "终态": "" if meta is None else meta.terminal_label,
+                "结果说明": st.note,
+                "理由": "" if meta is None else meta.reasoning,
+                "关键因素": "" if meta is None else "；".join(meta.key_factors),
+                "风险": "" if meta is None else meta.risk,
+                "失效条件": "" if meta is None else meta.invalidation,
+            }
+        )
+    return buf.getvalue()
 
 
 def trades_to_csv(result: BacktestResult) -> str:

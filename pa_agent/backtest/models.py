@@ -119,6 +119,38 @@ class SimTrade:
         }
 
 
+@dataclass(frozen=True)
+class DecisionMeta:
+    """一轮 AI 分析的判断依据（报告里展示，不参与撮合）。"""
+
+    trend: str = ""
+    trend_background: str = ""
+    cycle: str = ""
+    alt_cycle: str = ""
+    phase: str = ""
+    spike_stage: str = ""
+    patterns: tuple[str, ...] = ()
+    conf_diag: int | None = None
+    conf_trade: int | None = None
+    win_rate: float | None = None
+    terminal_id: str = ""
+    terminal_outcome: str = ""
+    terminal_label: str = ""
+    reasoning: str = ""
+    risk: str = ""
+    invalidation: str = ""
+    key_factors: tuple[str, ...] = ()
+
+    @property
+    def is_empty(self) -> bool:
+        return not (
+            self.trend
+            or self.cycle
+            or self.reasoning
+            or self.conf_diag is not None
+        )
+
+
 @dataclass
 class StepLog:
     """一次 as-of 分析的记录（含未下单的步骤）。"""
@@ -129,6 +161,7 @@ class StepLog:
     entry: float | None
     note: str
     traded: bool
+    meta: DecisionMeta | None = None
 
 
 @dataclass
@@ -183,7 +216,18 @@ class BacktestResult:
             "跳过(历史不足)": self.skipped,
             "失败(分析异常)": self.failures,
             "已取消": self.cancelled,
+            "平均诊断分": self._avg_conf("conf_diag"),
+            "平均交易分": self._avg_conf("conf_trade"),
+            "下单率": (len(trades) / analyzed) if analyzed else 0.0,
         }
+
+    def _avg_conf(self, attr: str) -> float | None:
+        values = [
+            getattr(st.meta, attr)
+            for st in self.steps
+            if st.meta is not None and getattr(st.meta, attr) is not None
+        ]
+        return (sum(values) / len(values)) if values else None
 
 
 def fmt_ts(ts_ms: int | None) -> str:
