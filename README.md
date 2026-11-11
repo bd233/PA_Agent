@@ -4,13 +4,13 @@
 
 ---
 
-面向主观交易者的 **价格行为（Price Action）** AI 辅助决策工具。从 **MT5 / TradingView / yfinance / AkShare** 读取 K 线，将结构化 K 线数据与预计算特征送入大模型做**两阶段分析**（市场诊断 → 交易决策），**不是**截图识图，**不连接券商、不执行下单**。
+面向主观交易者的 **价格行为（Price Action）** AI 辅助决策工具。从 **MT5 / TradingView / A股（专属数据源）/ yfinance / AkShare** 读取 K 线，将结构化 K 线数据与预计算特征送入大模型做**两阶段分析**（市场诊断 → 交易决策），**不是**截图识图，**不连接券商、不执行下单**。
 
 ---
 
 ## 主要功能
 
-- 📈 **多数据源**：MT5（Windows）、TradingView（全平台）、yfinance（期货/加密货币）、AkShare（A 股）
+- 📈 **多数据源**：MT5（Windows）、TradingView（全平台）、A股（专属数据源，东方财富 HTTP 直连）、yfinance（期货/加密货币）、AkShare（A 股）
 - 🧠 **两阶段 AI 分析**：市场诊断 → 策略路由 → 交易决策（限价/突破/市价或不下单）
 - 🔄 **增量分析与持续跟踪**：新增 K 线时复用上次结论；开启 `keep_analysis` 后新 K 线收盘自动触发新一轮分析
 - 🌳 **决策树可视化**：赛博科幻风格可交互流程图，自动播放闸门→策略路径动画
@@ -23,13 +23,26 @@
 
 ---
 
+## 本 Fork 的 A 股适配
+
+本仓库是 [bd233/PA_Agent](https://github.com/bd233/PA_Agent) fork，相对上游 [rosemarycox5334-debug/PA_Agent](https://github.com/rosemarycox5334-debug/PA_Agent) 主要做 **A 股可用性** 方向的改动，目前包括：
+
+- **界面默认显示「A股（专属数据源）」**：数据来源下拉框新增 `ashare` 项（东方财富 HTTP 直连，含腾讯等免费替补），无需再改代码即可分析 A 股；`SHOW_ASHARE_DATA_SOURCE` 在 `pa_agent/data/factory.py`，修改后需重启生效。
+- **同步单元测试**：`tests/unit/test_data_source_factory.py` 的断言随默认值更新。
+
+A 股使用方式、代码规则、复权与涨跌停口径、已知限制、以及**后续所有 A 股相关更新**，统一记录在 [`A股适配说明.md`](A股适配说明.md)（同时作为本 fork 的变更日志）。
+
+> 同步上游：`git fetch upstream && git merge upstream/main`（`origin` 指向本 fork，`upstream` 指向原仓库）。
+
+---
+
 ## 环境要求
 
 | 项目     | 要求                                                                    |
 | -------- | ----------------------------------------------------------------------- |
 | 操作系统 | Windows 10 / 11（主支持）、macOS 12+（TradingView 数据源）              |
 | Python   | 3.11+                                                                    |
-| 数据源   | MT5 / TradingView / yfinance / AkShare **至少配置一种**                  |
+| 数据源   | MT5 / TradingView / A股（专属数据源）/ yfinance / AkShare **至少配置一种** |
 | 网络     | 可访问所配置的 AI API（如 DeepSeek、PackyAPI 等）                        |
 
 ---
