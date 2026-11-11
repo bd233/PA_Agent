@@ -22,12 +22,12 @@ DataSourceKind = Literal[
 
 #: 是否在界面「数据来源」下拉框里显示 A股（专属数据源）。
 #:
-#: ⚠️ 只能改代码，UI 设置里不暴露（用户明确要求）：默认 False = 不显示，
-#: 界面只有 MT5 / TradingView。需要时把这里改成 True 并重启程序即可。
+#: 本机定制：已改为 True，界面显示「A股（专属数据源）」（EastMoneySource）。
+#: 该常量在导入时求值（DATA_SOURCE_CHOICES），修改后必须重启程序才生效。
 #: 关闭显示不影响该 kind 本身——它始终是合法 kind，脚本/后端仍可用
 #: ``create_data_source("ashare")`` 创建；已经保存过 ashare 的配置会被界面
 #: 回退到 MT5（沿用「保存的源不在下拉列表就回退默认」的既有行为）。
-SHOW_ASHARE_DATA_SOURCE: bool = False
+SHOW_ASHARE_DATA_SOURCE: bool = True
 
 #: A股专属数据源在界面/状态栏的统一文案。
 ASHARE_SOURCE_LABEL = "A股（专属数据源）"

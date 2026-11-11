@@ -36,14 +36,18 @@ def test_mt5_in_ui_choices():
     assert "akshare" not in ui_kinds
 
 
-def test_ashare_hidden_in_ui_by_default():
-    """A股数据源默认不在界面显示：开关是代码常量，UI 里不暴露。"""
+def test_ashare_shown_in_ui_by_default():
+    """本机定制：A股数据源默认在界面显示（SHOW_ASHARE_DATA_SOURCE 已改为 True）。
+
+    DATA_SOURCE_CHOICES 在导入时按该常量求值，因此这里同时校验开关与下拉
+    列表一致。无论开关如何，ashare 始终是合法 kind，脚本/后端照样能创建。
+    """
     import pa_agent.data.factory as factory
 
-    assert factory.SHOW_ASHARE_DATA_SOURCE is False
-    assert "ashare" not in {k for k, _ in DATA_SOURCE_CHOICES}
-    assert [k for k, _ in DATA_SOURCE_CHOICES] == ["mt5", "tradingview"]
-    # 只是不显示，kind 本身仍然合法：脚本/后端照样能创建
+    assert factory.SHOW_ASHARE_DATA_SOURCE is True
+    assert "ashare" in {k for k, _ in DATA_SOURCE_CHOICES}
+    assert [k for k, _ in DATA_SOURCE_CHOICES] == ["mt5", "tradingview", "ashare"]
+    # kind 本身始终合法：脚本/后端照样能创建
     assert normalize_data_source_kind("ashare") == "ashare"
     assert isinstance(create_data_source("ashare"), EastMoneySource)
 
