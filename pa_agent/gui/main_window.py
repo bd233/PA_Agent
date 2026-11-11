@@ -392,6 +392,11 @@ class MainWindow(QMainWindow):
         self._demo_exit_action.setEnabled(False)
         demo_menu.addAction(self._demo_exit_action)
 
+        # 5. 回测 — 按 AI 建议逐根回放（walk-forward）
+        _backtest_action = QAction("回测", self)
+        _backtest_action.triggered.connect(self._open_backtest_dialog)
+        menu_bar.addAction(_backtest_action)
+
     def _build_workbench(self) -> QWidget:
         """Build chart + AI sidebar workbench."""
         from pa_agent.gui.chart_widget import ChartWidget
@@ -4369,6 +4374,31 @@ class MainWindow(QMainWindow):
             settings = Settings()
 
         dlg = FeishuSettingsDialog(settings=settings, parent=self)
+        dlg.exec()
+
+    def _open_backtest_dialog(self) -> None:
+        """打开回测窗口：按 AI 建议逐根回放最近 N 根 K 线并结算盈亏。"""
+        from pa_agent.gui.backtest_dialog import BacktestDialog
+
+        if getattr(self._ctx, "data_source", None) is None:
+            QMessageBox.information(self, "数据源未就绪", "请先选择数据来源并加载 K 线。")
+            return
+        if getattr(self, "_analysis_in_progress", False):
+            QMessageBox.information(self, "正在分析", "请等当前分析结束后再回测。")
+            return
+        symbol = ""
+        tf = ""
+        try:
+            symbol = self._symbol_combo.currentText().strip()
+            tf = self._tf_combo.currentText().strip()
+        except Exception:  # noqa: BLE001
+            pass
+        if not symbol:
+            settings = getattr(self._ctx, "settings", None)
+            symbol = getattr(getattr(settings, "general", None), "last_symbol", "") or ""
+        dlg = BacktestDialog(
+            ctx=self._ctx, symbol=symbol, timeframe=tf or "1d", parent=self
+        )
         dlg.exec()
 
     def _open_general_settings_dialog(self) -> None:
