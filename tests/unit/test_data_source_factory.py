@@ -46,7 +46,7 @@ def test_ashare_shown_in_ui_by_default():
 
     assert factory.SHOW_ASHARE_DATA_SOURCE is True
     assert "ashare" in {k for k, _ in DATA_SOURCE_CHOICES}
-    assert [k for k, _ in DATA_SOURCE_CHOICES] == ["mt5", "tradingview", "sge", "ashare"]
+    assert [k for k, _ in DATA_SOURCE_CHOICES] == ["mt5", "tradingview", "sge", "jd_gold", "ashare"]
     # kind 本身始终合法：脚本/后端照样能创建
     assert normalize_data_source_kind("ashare") == "ashare"
     assert isinstance(create_data_source("ashare"), EastMoneySource)
@@ -57,11 +57,12 @@ def test_ashare_shown_when_code_switch_is_on():
 
     choices = data_source_choices(show_ashare=True)
     assert choices[-1] == ("ashare", ASHARE_SOURCE_LABEL)
-    assert [k for k, _ in choices] == ["mt5", "tradingview", "sge", "ashare"]
+    assert [k for k, _ in choices] == ["mt5", "tradingview", "sge", "jd_gold", "ashare"]
     assert [k for k, _ in data_source_choices(show_ashare=False)] == [
         "mt5",
         "tradingview",
         "sge",
+        "jd_gold",
     ]
 
 

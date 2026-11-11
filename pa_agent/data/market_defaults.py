@@ -110,6 +110,10 @@ def normalize_gold_symbol_for_kind(kind: str, symbol: str) -> str:
         from pa_agent.data.sge_source import SGE_DEFAULT_SYMBOL, normalize_sge_symbol
 
         return normalize_sge_symbol(sym) or SGE_DEFAULT_SYMBOL
+    if kind == "jd_gold":
+        from pa_agent.data.jd_gold_source import JD_GOLD_DEFAULT_SYMBOL, normalize_jd_gold_symbol
+
+        return normalize_jd_gold_symbol(sym) or JD_GOLD_DEFAULT_SYMBOL
     if kind == "tradingview":
         code = normalize_ashare_tv_code(sym)
         if _is_ashare_tv_code(code):

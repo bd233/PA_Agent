@@ -15,6 +15,7 @@ DataSourceKind = Literal[
     "tradingview",
     "ashare",
     "sge",
+    "jd_gold",
     "akshare",
     "eastmoney_futures",
     "tushare",
@@ -36,11 +37,15 @@ ASHARE_SOURCE_LABEL = "A股（专属数据源）"
 #: 上金所黄金现货在界面/状态栏的统一文案。
 SGE_SOURCE_LABEL = "上海黄金（Au99.99）"
 
+#: 银行积存金（京东金融报价）在界面/状态栏的统一文案。
+JD_GOLD_SOURCE_LABEL = "银行积存金（浙商/民生）"
+
 #: 出厂下拉框内容：MT5 为默认数据源，排在首位。
 _BASE_SOURCE_CHOICES: tuple[tuple[DataSourceKind, str], ...] = (
     ("mt5", "MT5"),
     ("tradingview", "TradingView"),
     ("sge", SGE_SOURCE_LABEL),
+    ("jd_gold", JD_GOLD_SOURCE_LABEL),
 )
 
 
@@ -67,6 +72,7 @@ _DEFAULT_SYMBOLS: dict[DataSourceKind, str] = {
     "tradingview": GOLD_TV_SYMBOL,
     "ashare": A_SHARE_DEFAULT_SYMBOL,
     "sge": "Au99.99",
+    "jd_gold": "浙商积存金",
     "akshare": A_SHARE_DEFAULT_SYMBOL,
     "eastmoney_futures": "RB0 螺纹钢",
     "tushare": A_SHARE_DEFAULT_SYMBOL,
@@ -99,6 +105,8 @@ def data_source_label(kind: str | None) -> str:
         return "东方财富期货"
     if normalized == "sge":
         return SGE_SOURCE_LABEL
+    if normalized == "jd_gold":
+        return JD_GOLD_SOURCE_LABEL
     if normalized == "tushare":
         return "Tushare(A股)"
     if normalized == "akshare":
@@ -131,6 +139,10 @@ def create_data_source(kind: str | None) -> DataSource:
         from pa_agent.data.sge_source import SgeSource
 
         return SgeSource()
+    if normalized == "jd_gold":
+        from pa_agent.data.jd_gold_source import JdGoldSource
+
+        return JdGoldSource()
     if normalized == "tushare":
         from pa_agent.config.paths import SETTINGS_JSON_PATH
         from pa_agent.config.settings import load_settings

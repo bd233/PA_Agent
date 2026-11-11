@@ -13,7 +13,7 @@
 
 - 量价类判断（放量突破、量价背离、量比）在这个源上不可用；
 - 分钟周期只有**当日**分时（隔日即失效），无法回溯历史分钟 K 线；
-- 1h 仅有约 14 根（不足 20 根分析门槛），故不提供。
+- 15m/30m 当日只能凑出约 53/27 根，不足分析窗口（默认 100 根），故不提供；5m 约 157 根、1m 约 780 根。
 
 用法：``subscribe("Au99.99", "1d")`` → ``latest_snapshot(n)``。
 """
@@ -67,9 +67,9 @@ _ALIASES: dict[str, str] = {
 }
 
 #: 支持周期：日线 + 当日分钟（1h 只有约 14 根，低于 20 根分析门槛，不提供）
-_SUPPORTED_TIMEFRAMES: tuple[str, ...] = ("1d", "30m", "15m", "5m", "1m")
+_SUPPORTED_TIMEFRAMES: tuple[str, ...] = ("1d", "5m", "1m")
 
-_TF_MINUTES: dict[str, int] = {"30m": 30, "15m": 15, "5m": 5, "1m": 1}
+_TF_MINUTES: dict[str, int] = {"5m": 5, "1m": 1}
 
 _DAILY_URL = "https://www.sge.com.cn/graph/Dailyhq?instid={inst}"
 _MINUTE_URL = "https://www.sge.com.cn/graph/quotations?instid={inst}"
@@ -183,6 +183,7 @@ def _parse_intraday(payload: Any, now: datetime | None = None) -> list[dict[str,
 
     day = _trade_date_for_intraday(now)
     rows: list[dict[str, Any]] = []
+    ticks: list[tuple[int, float]] = []
     prev_minute: int | None = None
     current_day = day
     for t_raw, p_raw in zip(times, prices):
@@ -203,17 +204,23 @@ def _parse_intraday(payload: Any, now: datetime | None = None) -> list[dict[str,
             current_day = current_day + timedelta(days=1)
         prev_minute = hh * 60 + mm
         ts = current_day.replace(hour=hh, minute=mm)
+        ticks.append((int(ts.timestamp() * 1000), price))
+    ticks.sort(key=lambda pair: pair[0])
+    # 分时只有每分钟一个价：开=上一分钟收盘，高低包住两者（否则 K 线全是无实体的「一字」）
+    prev_close: float | None = None
+    for ms, price in ticks:
+        open_price = prev_close if prev_close is not None else price
         rows.append(
             {
-                "ts_open": int(ts.timestamp() * 1000),
-                "open": price,
-                "high": price,
-                "low": price,
+                "ts_open": ms,
+                "open": open_price,
+                "high": max(open_price, price),
+                "low": min(open_price, price),
                 "close": price,
                 "volume": 0.0,
             }
         )
-    rows.sort(key=lambda r: r["ts_open"])
+        prev_close = price
     return rows
 
 

@@ -443,7 +443,8 @@ class MainWindow(QMainWindow):
             "K 线数据来源：\n"
             "· MT5（默认，需终端登录）\n"
             "· TradingView（tvDatafeed，A股/港股可走 SSE/SZSE）\n"
-            "· 上海黄金（上金所 Au99.99 现货，日线+当日分时，无成交量）"
+            "· 上海黄金（上金所 Au99.99 现货，日线+当日分时，无成交量）\n"
+            "· 银行积存金（浙商/民生等京东金融报价，日线约一年+当日分时，无成交量）"
         )
         if SHOW_ASHARE_DATA_SOURCE:
             _ds_tip += f"\n· {ASHARE_SOURCE_LABEL}（HTTP 直连，含腾讯/免费替补）"
@@ -1059,6 +1060,9 @@ class MainWindow(QMainWindow):
         elif kind == "sge":
             # 上金所：日线可回溯 2400 根，分钟周期只有当日 → 切源时固定回日线
             self._tf_combo.setCurrentText("1d")
+        elif kind == "jd_gold":
+            # 银行积存金：日线最多约一年，分钟周期只有当日 → 切源时固定回日线
+            self._tf_combo.setCurrentText("1d")
 
     def _apply_tv_exchange_to_source(self, data_source: Any) -> None:
         from pa_agent.data.tradingview import TradingViewSource
@@ -1150,6 +1154,8 @@ class MainWindow(QMainWindow):
             line.setPlaceholderText("A股 6 位代码，如 600519；指数 000300 或 sh000300")
         elif kind == "sge":
             line.setPlaceholderText("上金所现货，如 Au99.99 / Au(T+D)；无历史成交量")
+        elif kind == "jd_gold":
+            line.setPlaceholderText("银行积存金，如 浙商积存金 / 民生积存金；无成交量")
         else:
             line.setPlaceholderText("输入 MT5 品种名，如 XAUUSDm…")
 
@@ -1386,7 +1392,7 @@ class MainWindow(QMainWindow):
                 timeframe = (
                     A_SHARE_DEFAULT_TIMEFRAME
                     if kind in ("ashare", "akshare", "tushare")
-                    else "1d" if kind == "sge" else "15m"
+                    else "1d" if kind in ("sge", "jd_gold") else "15m"
                 )
 
             new_source = create_data_source(kind)

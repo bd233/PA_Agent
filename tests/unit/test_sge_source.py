@@ -55,8 +55,9 @@ def test_normalize_sge_symbol(raw: str, expected: str) -> None:
 
 
 def test_supported_timeframes_excludes_1h() -> None:
-    assert sge.SgeSource().supported_timeframes() == ["1d", "30m", "15m", "5m", "1m"]
-    assert "1h" not in sge.SgeSource().supported_timeframes()
+    assert sge.SgeSource().supported_timeframes() == ["1d", "5m", "1m"]
+    for tf in ("1h", "15m", "30m"):
+        assert tf not in sge.SgeSource().supported_timeframes()
 
 
 # ── 解析 ──────────────────────────────────────────────────────────────────
@@ -156,11 +157,11 @@ def test_latest_snapshot_daily_uses_realtime_for_last_bar(monkeypatch) -> None:
     assert src.HAS_VOLUME is False
 
 
-def test_latest_snapshot_30m_merges_minutes(monkeypatch) -> None:
+def test_latest_snapshot_5m_merges_minutes(monkeypatch) -> None:
     monkeypatch.setattr(sge, "_http_get", _fake_http)
     src = sge.SgeSource()
     src.connect()
-    src.subscribe("AU9999", "30m")
+    src.subscribe("AU9999", "5m")
     bars = src.latest_snapshot(10)
 
     assert bars
