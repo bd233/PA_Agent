@@ -114,3 +114,47 @@ def test_render_chart_uses_full_history_and_marks_window() -> None:
     assert overlay is not None
     assert [s.kind for s in overlay.spans] == ["window"]
     assert overlay.spans[0].x1 == pytest.approx(59.5)
+
+def test_steps_tab_lists_every_step_with_evidence() -> None:
+    """决策步骤页签要把「不下单」的步也列出来，并带趋势/周期/评分。"""
+    from pa_agent.backtest.engine import meta_from_payload
+    from pa_agent.backtest.models import StepLog
+    from pa_agent.gui import backtest_dialog as mod
+
+    _app()
+    dlg = mod.BacktestDialog(ctx=_ctx(), symbol="601599", timeframe="1d")
+    payload = {
+        "decision": {"order_type": "不下单", "reasoning": "区间中部", "diagnosis_confidence": 55, "trade_confidence": 40},
+        "diagnosis": {
+            "cycle_position": "trading_range",
+            "trend_context": {"primary_direction": "neutral"},
+            "market_phase": "transitioning",
+        },
+        "terminal": {"outcome": "wait", "label": "等待边界"},
+    }
+    meta = meta_from_payload(payload, payload["decision"])
+    result = BacktestResult(
+        config=BacktestConfig(symbol="601599", timeframe="1d", bar_count=1),
+        steps=[
+            StepLog(
+                ts_open=T0,
+                order_type="不下单",
+                direction="",
+                entry=None,
+                note="AI 未给单",
+                traded=False,
+                meta=meta,
+            )
+        ],
+    )
+    dlg._fill_table(result)
+    assert dlg._steps_table.rowCount() == 1
+    texts = [
+        dlg._steps_table.item(0, c).text() for c in range(dlg._steps_table.columnCount())
+    ]
+    assert texts[1] == "不下单"
+    assert texts[8] == "交易区间"
+    assert texts[7] == "中性"
+    assert texts[9] == "转换中"
+    assert texts[4] == "55"
+    assert texts[5] == "40"

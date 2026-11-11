@@ -7,11 +7,13 @@ from typing import Any, Callable, Sequence
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from pa_agent.backtest.engine import (
+    TERMINAL_OUTCOME_ZH,
     equity_points,
     is_no_order,
     meta_from_payload,
     plan_from_decision,
     simulate_trade,
+    zh,
 )
 from pa_agent.backtest.models import (
     BacktestConfig,
@@ -21,6 +23,26 @@ from pa_agent.backtest.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+def _brief(meta: DecisionMeta | None) -> str:
+    """进度日志里的简短判断摘要：周期 · 趋势 · 诊断分/交易分 · 阶段。"""
+    if meta is None:
+        return ""
+    parts: list[str] = []
+    if meta.cycle:
+        parts.append(meta.cycle)
+    if meta.trend:
+        parts.append(meta.trend)
+    if meta.conf_diag is not None or meta.conf_trade is not None:
+        diag = "-" if meta.conf_diag is None else str(meta.conf_diag)
+        trade = "-" if meta.conf_trade is None else str(meta.conf_trade)
+        parts.append(f"诊断{diag}/交易{trade}")
+    if meta.phase:
+        parts.append(meta.phase)
+    outcome = zh(meta.terminal_outcome, TERMINAL_OUTCOME_ZH)
+    if outcome:
+        parts.append(outcome)
+    return f"（{' · '.join(parts)}）" if parts else ""
 
 #: 连续多少次分析失败后提前终止（避免网络问题时空跑 N 次）
 MAX_CONSECUTIVE_FAILURES = 3
@@ -170,7 +192,9 @@ class BacktestRunner(QThread):
                         )
                     )
                     self.progress.emit(
-                        step + 1, total, f"{fmt_ts(asof.ts_open)} 不下单"
+                        step + 1,
+                        total,
+                        f"{fmt_ts(asof.ts_open)} 不下单{_brief(meta)}",
                     )
                     continue
 
@@ -190,7 +214,8 @@ class BacktestRunner(QThread):
                     self.progress.emit(
                         step + 1,
                         total,
-                        f"{fmt_ts(asof.ts_open)} {plan.direction}{plan.order_type} 未成交",
+                        f"{fmt_ts(asof.ts_open)} {plan.direction}{plan.order_type} 未成交"
+                        f"{_brief(meta)}",
                     )
                     continue
 
@@ -211,7 +236,8 @@ class BacktestRunner(QThread):
                     step + 1,
                     total,
                     f"{fmt_ts(asof.ts_open)} {plan.direction} 成交 {trade.entry:.2f} → "
-                    f"{trade.exit:.2f}（{trade.exit_reason}）{trade.pnl:+.2f}",
+                    f"{trade.exit:.2f}（{trade.exit_reason}）{trade.pnl:+.2f}"
+                    f"{_brief(meta)}",
                 )
 
             result.equity_curve = equity_points(result.trades, cfg.initial_capital)

@@ -54,10 +54,29 @@ DIRECTION_ZH = {
 PHASE_ZH = {
     "stable": "稳定",
     "transition": "转换中",
+    "transitioning": "转换中",
     "climax": "高潮",
+    "climaxing": "高潮",
     "spike": "尖峰中",
+    "spiking": "尖峰中",
+    "trending": "趋势中",
+    "expanding": "扩张中",
+    "contracting": "收缩中",
+    "active": "进行中",
+    "ending": "收尾中",
+    "unknown": "未知",
 }
 RISK_ZH = {"none": "无", "low": "低", "medium": "中", "high": "高"}
+TERMINAL_OUTCOME_ZH = {
+    "active": "进行中",
+    "ending": "收尾中",
+    "wait": "等待边界",
+    "waiting": "等待边界",
+    "invalid": "已失效",
+    "invalidated": "已失效",
+    "completed": "已完成",
+    "no_trade": "无交易",
+}
 
 
 def zh(value: Any, table: dict[str, str]) -> str:

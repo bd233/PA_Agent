@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QSplitter,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -220,9 +221,36 @@ class BacktestDialog(QDialog):
         self._table.verticalHeader().setVisible(False)
         self._table.horizontalHeader().setStretchLastSection(True)
 
+        # 决策步骤：把所有回放步都列出来（不只是成交），带趋势/周期/阶段/评分
+        self._steps_table = QTableWidget(0, 12)
+        self._steps_table.setHorizontalHeaderLabels(
+            [
+                "K线时间",
+                "结果",
+                "方向/挂单",
+                "入场",
+                "诊断分",
+                "交易分",
+                "胜率",
+                "趋势",
+                "周期",
+                "阶段",
+                "终态",
+                "结果说明",
+            ]
+        )
+        self._steps_table.setAlternatingRowColors(True)
+        self._steps_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._steps_table.verticalHeader().setVisible(False)
+        self._steps_table.horizontalHeader().setStretchLastSection(True)
+
+        self._tabs = QTabWidget()
+        self._tabs.addTab(self._table, "成交明细")
+        self._tabs.addTab(self._steps_table, "决策步骤")
+
         split = QSplitter(Qt.Orientation.Vertical)
         split.addWidget(self._chart)
-        split.addWidget(self._table)
+        split.addWidget(self._tabs)
         split.setStretchFactor(0, 3)
         split.setStretchFactor(1, 2)
         split.setSizes([560, 240])
@@ -310,6 +338,7 @@ class BacktestDialog(QDialog):
 
         self._result = None
         self._table.setRowCount(0)
+        self._steps_table.setRowCount(0)
         self._chart.clear_backtest_overlay()
         self._summary.setText("运行中…")
         self._log.clear()
@@ -459,6 +488,10 @@ class BacktestDialog(QDialog):
             logger.debug("backtest source disconnect failed: %s", exc)
 
     def _fill_table(self, result: BacktestResult) -> None:
+        self._fill_trades(result)
+        self._fill_steps(result)
+
+    def _fill_trades(self, result: BacktestResult) -> None:
         self._table.setRowCount(0)
         for t in result.trades:
             row = self._table.rowCount()
@@ -485,6 +518,46 @@ class BacktestDialog(QDialog):
                     )
                 self._table.setItem(row, col, item)
 
+
+    def _fill_steps(self, result: BacktestResult) -> None:
+        """逐步列出 AI 的结论与依据（不下单的步骤也显示）。"""
+        self._steps_table.setRowCount(0)
+        for st in result.steps:
+            meta = st.meta
+            row = self._steps_table.rowCount()
+            self._steps_table.insertRow(row)
+            if st.traded:
+                outcome = "成交"
+            elif st.order_type in ("不下单", ""):
+                outcome = "不下单"
+            else:
+                outcome = "未成交"
+            order = f"{st.direction}/{st.order_type}" if st.direction else (st.order_type or "-")
+            cells = [
+                datetime.fromtimestamp(st.ts_open / 1000).strftime("%m-%d %H:%M"),
+                outcome,
+                order,
+                "-" if st.entry is None else f"{st.entry:.3f}",
+                "" if meta is None or meta.conf_diag is None else str(meta.conf_diag),
+                "" if meta is None or meta.conf_trade is None else str(meta.conf_trade),
+                "" if meta is None or meta.win_rate is None else f"{meta.win_rate:.0%}",
+                "" if meta is None else meta.trend,
+                "" if meta is None else meta.cycle,
+                "" if meta is None else meta.phase,
+                "" if meta is None else meta.terminal_label,
+                st.note or "",
+            ]
+            for col, text in enumerate(cells):
+                item = QTableWidgetItem(text)
+                if col in (4, 5, 6):
+                    item.setTextAlignment(
+                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    )
+                if col == 1:
+                    item.setForeground(
+                        Qt.GlobalColor.red if st.traded else Qt.GlobalColor.gray
+                    )
+                self._steps_table.setItem(row, col, item)
     # ── 保存 ──────────────────────────────────────────────────────────────────
     def _on_save(self) -> None:
         if self._result is None:
